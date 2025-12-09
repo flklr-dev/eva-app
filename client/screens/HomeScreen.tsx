@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '../components/Button';
 import { BottomNavBar, BottomTab } from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
+import { 
+  registerForPushNotifications, 
+  subscribeToPushNotifications, 
+  unsubscribeFromPushNotifications,
+  addNotificationListeners,
+  getSubscriptionStatus
+} from '../services/notificationService';
 
 const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
@@ -26,15 +34,162 @@ const PlaceholderTab: React.FC<{ name: string }> = ({ name }) => (
 );
 
 const LocationTab: React.FC = () => {
+  const { token } = useAuth();
+  const [isNotified, setIsNotified] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [pushToken, setPushToken] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Load notification state on mount and sync with server
+  useEffect(() => {
+    loadNotificationState();
+    setupNotificationListeners();
+  }, [token]);
+
+  const loadNotificationState = async () => {
+    try {
+      const savedToken = await AsyncStorage.getItem('pushToken');
+      if (savedToken) setPushToken(savedToken);
+
+      // Sync with server if we have an auth token
+      if (token) {
+        const serverStatus = await getSubscriptionStatus(token);
+        if (serverStatus !== null) {
+          setIsNotified(serverStatus);
+          await AsyncStorage.setItem('notificationState', JSON.stringify(serverStatus));
+        } else {
+          // Fall back to local state if server is unreachable
+          const savedState = await AsyncStorage.getItem('notificationState');
+          if (savedState) setIsNotified(JSON.parse(savedState));
+        }
+      } else {
+        // No auth token, use local state
+        const savedState = await AsyncStorage.getItem('notificationState');
+        if (savedState) setIsNotified(JSON.parse(savedState));
+      }
+    } catch (error) {
+      console.error('Error loading notification state:', error);
+      // Fall back to local state on error
+      const savedState = await AsyncStorage.getItem('notificationState');
+      if (savedState) setIsNotified(JSON.parse(savedState));
+    }
+  };
+
+  const setupNotificationListeners = () => {
+    return addNotificationListeners(
+      (notification) => {
+        console.log('Notification received:', notification);
+      },
+      (response) => {
+        console.log('Notification response:', response);
+      }
+    );
+  };
+
+  const handleNotifyToggle = async () => {
+    if (isNotified) {
+      // Show confirmation modal when canceling
+      setShowCancelModal(true);
+    } else {
+      // Enable notification
+      await enableNotifications();
+    }
+  };
+
+  const enableNotifications = async () => {
+    try {
+      setIsProcessing(true);
+
+      // Get push token
+      let expoPushToken = pushToken;
+      if (!expoPushToken) {
+        expoPushToken = await registerForPushNotifications();
+        if (!expoPushToken) {
+          console.error('Failed to get push token');
+          setIsProcessing(false);
+          return;
+        }
+        setPushToken(expoPushToken);
+        await AsyncStorage.setItem('pushToken', expoPushToken);
+      }
+
+      // Subscribe via backend
+      if (token) {
+        const success = await subscribeToPushNotifications(expoPushToken, token);
+        if (success) {
+          setIsNotified(true);
+          await AsyncStorage.setItem('notificationState', 'true');
+        }
+      }
+    } catch (error) {
+      console.error('Error enabling notifications:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const confirmCancel = async () => {
+    try {
+      setIsProcessing(true);
+
+      if (pushToken && token) {
+        const success = await unsubscribeFromPushNotifications(pushToken, token);
+        if (success) {
+          setIsNotified(false);
+          await AsyncStorage.setItem('notificationState', 'false');
+        }
+      }
+    } catch (error) {
+      console.error('Error canceling notifications:', error);
+    } finally {
+      setIsProcessing(false);
+      setShowCancelModal(false);
+    }
+  };
+
+  const dismissModal = () => {
+    setShowCancelModal(false);
+  };
+
   return (
-    <View style={styles.locationTab}>
-      <Text style={styles.locationTitle}>Hello!</Text>
-      <Text style={styles.locationDesc}>We will soon release the full version of the app within a few weeks</Text>
-      
-      <Button style={styles.notifyButton}>
-        Notify Me
-      </Button>
-    </View>
+    <>
+      <View style={styles.locationTab}>
+        <Text style={styles.locationTitle}>Hello!</Text>
+        <Text style={styles.locationDesc}>We will release the full version of the app in the coming weeks.</Text>
+        
+        <Button 
+          style={isNotified ? {...styles.notifyButton, ...styles.notifyButtonActive} : styles.notifyButton}
+          onPress={handleNotifyToggle}
+          disabled={isProcessing}
+        >
+          {isProcessing ? 'Processing...' : (isNotified ? 'Notified ✓' : 'Notify Me')}
+        </Button>
+      </View>
+
+      {/* Cancel Confirmation Modal */}
+      <Modal
+        visible={showCancelModal}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Cancel Notification?</Text>
+            <Text style={styles.modalMessage}>You will no longer receive updates about the app release.</Text>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalButtonCancel} onPress={dismissModal}>
+                <Text style={styles.modalButtonTextCancel}>Keep Notified</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalButtonConfirm} onPress={confirmCancel}>
+                <Text style={styles.modalButtonTextConfirm}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 };
 
@@ -200,7 +355,7 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   locationDesc: { 
-    color:'#6B7280', 
+    color:'#111827', 
     fontSize: 14, 
     marginBottom: 32, 
     maxWidth: width * 0.8,
@@ -213,6 +368,9 @@ const styles = StyleSheet.create({
     right: 32,
     maxWidth: 320,
     alignSelf: 'center',
+  },
+  notifyButtonActive: {
+    backgroundColor: '#D4F4DD',
   },
   profileTab: {
     flex: 1,
@@ -257,5 +415,65 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 320,
     alignSelf: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: width - 80,
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 15,
+    color: '#6B7280',
+    lineHeight: 22,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButtonCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  modalButtonConfirm: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center',
+  },
+  modalButtonTextCancel: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonTextConfirm: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

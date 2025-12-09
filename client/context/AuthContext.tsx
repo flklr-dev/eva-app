@@ -79,49 +79,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       const response = await authService.login(email, password);
-      console.log('[AuthContext] Login successful, storing in pendingAuth');
-      // Don't set token/user yet - store in pending so modal can show first
-      setPendingAuth({ token: response.token, user: response.user });
+      console.log('[AuthContext] Login successful, setting token and user immediately');
+      // Set token and user immediately instead of using pendingAuth
+      setToken(response.token);
+      setUser(response.user);
+      setPendingAuth(null);
     } catch (error: any) {
       console.log('[AuthContext] Login error:', error.message);
       if (error.message === 'Network error' || error.message.includes('fetch')) {
         throw new Error('Network error. Please check your internet connection and make sure the server is running.');
       }
+      // Re-throw the error so the LoginScreen can handle it appropriately
       throw error;
     } finally {
       setIsLoading(false);
     }
   }, []);
-
+  
   // Register handler - stores auth in pending state, NOT active state
   const handleRegister = useCallback(async (name: string, email: string, password: string) => {
     console.log('[AuthContext] handleRegister called');
     try {
       setIsLoading(true);
       const response = await authService.register(name, email, password);
-      console.log('[AuthContext] Register successful, storing in pendingAuth');
-      // Don't set token/user yet - store in pending so modal can show first
-      setPendingAuth({ token: response.token, user: response.user });
+      console.log('[AuthContext] Register successful, setting token and user immediately');
+      // Set token and user immediately instead of using pendingAuth
+      setToken(response.token);
+      setUser(response.user);
+      setPendingAuth(null);
     } catch (error: any) {
       console.log('[AuthContext] Register error:', error.message);
       if (error.message === 'Network error' || error.message.includes('fetch')) {
         throw new Error('Network error. Please check your internet connection and make sure the server is running.');
       }
+      // Re-throw the error so the RegisterScreen can handle it appropriately
       throw error;
     } finally {
       setIsLoading(false);
     }
   }, []);
-
-  // Commit pending auth - call this after success modal is dismissed
+  
+  // Commit pending auth - simplified for backward compatibility
   const commitAuth = useCallback(() => {
-    if (pendingAuth) {
-      console.log('[AuthContext] Committing pending auth - navigating to HOME');
-      setToken(pendingAuth.token);
-      setUser(pendingAuth.user);
-      setPendingAuth(null);
-    }
-  }, [pendingAuth]);
+    // This function is kept for backward compatibility but no longer needed
+    console.log('[AuthContext] commitAuth called (no-op)');
+  }, []);
 
   // Logout handler
   const handleLogout = useCallback(async () => {

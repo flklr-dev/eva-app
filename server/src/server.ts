@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import authRoutes from './routes/authRoutes';
+import adminAuthRoutes from './routes/adminAuthRoutes';
+import notificationRoutes from './routes/notifications';
 
 // Load environment variables
 dotenv.config();
@@ -12,21 +14,65 @@ const app = express();
 
 // Security middleware
 app.use(helmet());
+// Configure CORS with environment-based allowed origins
+const getAllowedOrigins = (): string[] => {
+  const origins = [];
+  
+  // Production origins from environment
+  if (process.env.WEB_DASHBOARD_URL) {
+    origins.push(process.env.WEB_DASHBOARD_URL);
+  }
+  if (process.env.ALB_URL) {
+    origins.push(process.env.ALB_URL);
+  }
+  if (process.env.CLIENT_URL) {
+    origins.push(process.env.CLIENT_URL);
+  }
+  
+  // Development origins (only in dev mode)
+  if (process.env.NODE_ENV !== 'production') {
+    origins.push(
+      'http://localhost:8081',
+      'http://localhost:5000',
+      'http://127.0.0.1:5000',
+      'http://127.0.0.1:8081'
+    );
+  }
+  
+  return origins;
+};
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests from localhost, local network IPs, and Expo
-    const allowedOrigins = [
-      'http://localhost:8081',
-      'http://192.168.1.118:8081',
-      'http://127.0.0.1:8081',
-    ];
+    const allowedOrigins = getAllowedOrigins();
     
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://192.168.')) {
+    // Allow requests with no origin (mobile apps, Postman, same-origin)
+    if (!origin) {
       callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return;
     }
+    
+    // Check exact match first
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    
+    // In production, allow ELB health checks
+    if (process.env.NODE_ENV === 'production' && origin.includes('.elb.amazonaws.com')) {
+      callback(null, true);
+      return;
+    }
+    
+    // In development, allow local network IPs
+    if (process.env.NODE_ENV !== 'production' && 
+        (origin.startsWith('http://192.168.') || origin.startsWith('http://127.'))) {
+      callback(null, true);
+      return;
+    }
+    
+    console.log('CORS blocked origin:', origin);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
@@ -58,6 +104,12 @@ app.get('/api/health', (req, res) => {
 
 // Auth Routes
 app.use('/api/auth', authRoutes);
+
+// Notification Routes
+app.use('/api/notifications', notificationRoutes);
+
+// Admin Auth Routes
+app.use('/api/admin/auth', adminAuthRoutes);
 
 // Connect to database and start server
 const PORT = process.env.PORT || 3000;

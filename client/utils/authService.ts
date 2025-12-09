@@ -3,8 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Use your machine's IP address instead of localhost for Expo
 // Your IP: 192.168.1.118 (found via ipconfig)
 const API_BASE_URL = __DEV__ 
-  ? 'http://192.168.1.118:3000/api'  // Your machine's IP for Expo
-  : 'http://localhost:3000/api';
+  ? (process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.118:3000')  // Use env var with fallback
+  : 'http://localhost:3000';
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'user_data';
 
@@ -24,9 +24,9 @@ export const authService = {
   // Register user
   register: async (name: string, email: string, password: string): Promise<AuthResponse> => {
     console.log('[authService] Starting registration...');
-    console.log('[authService] API URL:', `${API_BASE_URL}/auth/register`);
+    console.log('[authService] API URL:', `${API_BASE_URL}/api/auth/register`);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -35,6 +35,14 @@ export const authService = {
       });
 
       console.log('[authService] Register response status:', response.status);
+      
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.log('[authService] Register response is not JSON:', contentType);
+        throw new Error('Server returned invalid response format');
+      }
+      
       const data = await response.json();
       console.log('[authService] Register response data:', JSON.stringify(data));
 
@@ -54,7 +62,8 @@ export const authService = {
       console.log('[authService] Register error:', error.message);
       // Network error (server not reachable)
       if (error.message === 'Failed to fetch' || error.message.includes('Network request failed')) {
-        throw new Error(`Cannot connect to server. Please check:\n1. Server is running on http://192.168.1.118:3000\n2. Both devices are on the same WiFi\n3. Your internet connection is active`);
+        const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+        throw new Error(`Cannot connect to server. Please check:\n1. Server is running on ${serverUrl}\n2. Both devices are on the same WiFi\n3. Your internet connection is active`);
       }
       throw error instanceof Error ? error : new Error('Network error');
     }
@@ -63,9 +72,9 @@ export const authService = {
   // Login user
   login: async (email: string, password: string): Promise<AuthResponse> => {
     console.log('[authService] Starting login...');
-    console.log('[authService] API URL:', `${API_BASE_URL}/auth/login`);
+    console.log('[authService] API URL:', `${API_BASE_URL}/api/auth/login`);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -74,6 +83,17 @@ export const authService = {
       });
 
       console.log('[authService] Login response status:', response.status);
+      
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.log('[authService] Login response is not JSON:', contentType);
+        // Try to get text content for debugging
+        const textResponse = await response.text();
+        console.log('[authService] Login response text:', textResponse.substring(0, 200) + '...');
+        throw new Error(`Server returned invalid response format. Status: ${response.status}`);
+      }
+      
       const data = await response.json();
       console.log('[authService] Login response data:', JSON.stringify(data));
 
@@ -93,7 +113,8 @@ export const authService = {
       console.log('[authService] Login error:', error.message);
       // Network error (server not reachable)
       if (error.message === 'Failed to fetch' || error.message.includes('Network request failed')) {
-        throw new Error(`Cannot connect to server. Please check:\n1. Server is running on http://192.168.1.118:3000\n2. Both devices are on the same WiFi\n3. Your internet connection is active`);
+        const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+        throw new Error(`Cannot connect to server. Please check:\n1. Server is running on ${serverUrl}\n2. Both devices are on the same WiFi\n3. Your internet connection is active`);
       }
       throw error instanceof Error ? error : new Error('Network error');
     }
@@ -105,15 +126,22 @@ export const authService = {
       const token = await AsyncStorage.getItem(TOKEN_KEY);
       if (!token) return null;
 
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`,  // Fixed header format
         },
       });
 
       if (!response.ok) {
         await authService.logout();
+        return null;
+      }
+      
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.log('[authService] getCurrentUser response is not JSON:', contentType);
         return null;
       }
 

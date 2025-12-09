@@ -21,7 +21,7 @@ export const Input: React.FC<InputProps> = ({ error, style, ...rest }) => (
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 4,
     maxWidth: 320,
     alignSelf: 'center',
   },
@@ -29,8 +29,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 58,
     borderRadius: 30,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderWidth: 1.5,
+    borderColor: '#AAB0B7',
     backgroundColor: '#FFFFFF',
     color: '#111827',
     fontSize: 14,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Input } from '../components/Input';
@@ -24,21 +24,13 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
   const [modalTitle, setModalTitle] = useState('');
   const [modalMessage, setModalMessage] = useState('');
   
-  // Log modal visibility changes
-  useEffect(() => {
-    console.log('[LoginScreen] modalVisible changed to:', modalVisible);
-  }, [modalVisible]);
-  const { login, isLoading, commitAuth, pendingAuth } = useAuth();
+  const { login, isLoading } = useAuth();
 
   // Handle modal dismiss - commit auth if it was a success
-  const handleModalDismiss = () => {
+  const handleModalDismiss = useCallback(() => {
     console.log('[LoginScreen] Modal dismissed, type:', modalType);
     setModalVisible(false);
-    if (modalType === 'success' && pendingAuth) {
-      console.log('[LoginScreen] Committing auth after success modal');
-      commitAuth();
-    }
-  };
+  }, [modalType]);
 
   // Log when component mounts/unmounts
   useEffect(() => {
@@ -49,7 +41,7 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
   }, []);
 
   // Real-time validation
-  const handleEmailChange = (text: string) => {
+  const handleEmailChange = useCallback((text: string) => {
     setEmail(text);
     const result = validators.email(text);
     if (text.length > 0) {
@@ -64,9 +56,9 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
         return newErrors;
       });
     }
-  };
+  }, []);
 
-  const handlePasswordChange = (text: string) => {
+  const handlePasswordChange = useCallback((text: string) => {
     setPassword(text);
     const result = validators.password(text);
     if (text.length > 0) {
@@ -81,9 +73,9 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
         return newErrors;
       });
     }
-  };
+  }, []);
 
-  const handleLogin = async () => {
+  const handleLogin = useCallback(async () => {
     console.log('[LoginScreen] handleLogin called');
     // Validate form
     const emailValidation = validators.email(email);
@@ -110,8 +102,9 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
     console.log('[LoginScreen] Calling login...');
     try {
       await login(email, password);
-      console.log('[LoginScreen] Login successful, committing auth immediately');
-      commitAuth(); // Immediately navigate to home
+      console.log('[LoginScreen] Login successful');
+      // Clear only the password field on successful login
+      setPassword('');
     } catch (error: any) {
       console.log('[LoginScreen] Login failed:', error.message);
       setModalType('error');
@@ -121,8 +114,10 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
       );
       setModalVisible(true);
       console.log('[LoginScreen] Error modal visible set to true');
+      // DON'T clear the fields on error - let user correct mistakes
+      // Ensure password field retains its value
     }
-  };
+  }, [email, password, login]);
 
   return (
     <>
@@ -203,7 +198,7 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    gap: 16,
+    gap: 2,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
@@ -216,9 +211,9 @@ const styles = StyleSheet.create({
   },
   forgotWrapper: {
     alignSelf: 'flex-start',
-    marginTop: -12,
+    marginTop: 12,
     marginBottom: 16,
-    marginLeft: 0,
+    marginLeft: 24,
   },
   forgot: {
     color: '#6B7280',

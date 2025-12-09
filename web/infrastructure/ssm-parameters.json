@@ -1,0 +1,19 @@
+{
+  "Parameters": [
+    {
+      "Name": "/eva/mongodb-uri",
+      "Value": "mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/eva-app?retryWrites=true&w=majority",
+      "Type": "SecureString"
+    },
+    {
+      "Name": "/eva/jwt-secret",
+      "Value": "your-super-secret-jwt-key-change-this-in-production",
+      "Type": "SecureString"
+    },
+    {
+      "Name": "/eva/api-url",
+      "Value": "http://placeholder-url.com",
+      "Type": "SecureString"
+    }
+  ]
+}

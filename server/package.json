@@ -7,7 +7,9 @@
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
     "build": "tsc",
-    "test": "jest"
+    "test": "jest",
+    "seed:admin": "ts-node src/seedAdminUser.ts",
+    "add:admin": "ts-node src/addAdmin.ts"
   },
   "keywords": [
     "express",

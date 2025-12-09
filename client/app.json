@@ -1,19 +1,28 @@
 {
   "expo": {
-    "name": "client",
-    "slug": "client",
+    "name": "eva-app",
+    "slug": "eva-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "projectId": "46bb6629-6cdd-4b7c-8319-7086e679e11e",
+    "extra": {
+      "eas": {
+        "projectId": "97637b15-5560-4e3a-b6b2-ef717ca99b43"
+      }
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eva.alert",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,10 +30,15 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.eva.alert"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-notifications"
+    ],
+    "owner": "kit-jorismulkenss-organization"
   }
 }

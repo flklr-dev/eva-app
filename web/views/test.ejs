@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Test</title>
+</head>
+<body>
+  <h1>API Test Page</h1>
+  <div id="result"></div>
+  
+  <script>
+    const API_URL = '<%= apiUrl %>';  // Use server-provided API URL
+    console.log('API_URL:', API_URL);
+    
+    // Test health endpoint
+    fetch(`${API_URL}/api/health`)
+      .then(response => {
+        console.log('Health check response:', response.status);
+        document.getElementById('result').innerHTML = `Health check: ${response.status}`;
+        return response.json();
+      })
+      .then(data => {
+        console.log('Health check data:', data);
+        document.getElementById('result').innerHTML += `<br>Data: ${JSON.stringify(data)}`;
+      })
+      .catch(error => {
+        console.error('Health check error:', error);
+        document.getElementById('result').innerHTML = `Error: ${error.message}`;
+      });
+  </script>
+</body>
+</html>

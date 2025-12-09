@@ -1,0 +1,56 @@
+{
+  "family": "eva-app-web",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::580291028887:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::580291028887:role/ecsTaskRole",
+  "cpu": "512",
+  "memory": "1024",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "eva-app-web",
+      "image": "580291028887.dkr.ecr.us-east-1.amazonaws.com/eva-app-web:latest",
+      "portMappings": [
+        {
+          "containerPort": 5000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "API_URL",
+          "valueFrom": "arn:aws:ssm:us-east-1:580291028887:parameter/eva/api-url"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/eva-app-web",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:5000/ || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

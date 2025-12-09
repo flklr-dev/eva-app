@@ -115,7 +115,7 @@ export const RegisterScreen: React.FC<Props> = ({ onNavigate }) => {
 
     try {
       await register(name, email, password);
-      console.log('[RegisterScreen] Registration successful, committing auth immediately');
+      console.log('[RegisterScreen] Registration successful, committing auth');
       
       // Clear form
       setName('');
@@ -123,7 +123,8 @@ export const RegisterScreen: React.FC<Props> = ({ onNavigate }) => {
       setPassword('');
       setFieldErrors({});
       
-      commitAuth(); // Immediately navigate to home
+      // Immediately navigate to home
+      commitAuth();
     } catch (error: any) {
       setModalType('error');
       setModalTitle('Registration Failed');
@@ -219,7 +220,7 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    gap: 16,
+    gap: 4,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
