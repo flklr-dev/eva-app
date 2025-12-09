@@ -24,11 +24,17 @@ const seedAdminUser = async () => {
       return;
     }
 
+    // Get admin password from environment variables
+    const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD;
+    if (!adminPassword) {
+      throw new Error('DEFAULT_ADMIN_PASSWORD is not defined in environment variables');
+    }
+
     // Create default admin user
     const admin = new Admin({
       username: 'admin',
       email: 'admin@eva.com',
-      password: 'Admin123!', // Default password - should be changed on first login
+      password: adminPassword, // Password from environment variable
       firstName: 'System',
       lastName: 'Administrator',
       mustChangePassword: true, // Force password change on first login
@@ -37,8 +43,8 @@ const seedAdminUser = async () => {
     await admin.save();
     console.log('✓ Default admin user created successfully');
     console.log('Email: admin@eva.com');
-    console.log('Password: Admin123!');
-    console.log('⚠ IMPORTANT: Change this password on first login!');
+    console.log('⚠ Password set from DEFAULT_ADMIN_PASSWORD environment variable');
+    console.log('⚠ IMPORTANT: Ensure this password is strong and change it periodically!');
 
     await mongoose.connection.close();
   } catch (error) {

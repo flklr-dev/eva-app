@@ -24,11 +24,17 @@ const addAdmin = async () => {
       return;
     }
 
+    // Get admin password from environment variables
+    const adminPassword = process.env.SUPPORT_ADMIN_PASSWORD;
+    if (!adminPassword) {
+      throw new Error('SUPPORT_ADMIN_PASSWORD is not defined in environment variables');
+    }
+
     // Create support admin user
     const admin = new Admin({
       username: 'support',
       email: 'support@eva.com',
-      password: 'Support123!', // Default password - should be changed on first login
+      password: adminPassword, // Password from environment variable
       firstName: 'Support',
       lastName: 'Team',
       mustChangePassword: true, // Force password change on first login
@@ -37,8 +43,8 @@ const addAdmin = async () => {
     await admin.save();
     console.log('✓ Support admin user created successfully');
     console.log('Email: support@eva.com');
-    console.log('Password: Support123!');
-    console.log('⚠ IMPORTANT: Change this password on first login!');
+    console.log('⚠ Password set from SUPPORT_ADMIN_PASSWORD environment variable');
+    console.log('⚠ IMPORTANT: Ensure this password is strong and change it periodically!');
 
     await mongoose.connection.close();
   } catch (error) {
