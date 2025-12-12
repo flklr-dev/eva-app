@@ -1,19 +1,20 @@
 {
   "expo": {
-    "name": "eva-app",
+    "name": "EVA Alert",
     "slug": "eva-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/eva-logo.png",
     "userInterfaceStyle": "light",
     "projectId": "46bb6629-6cdd-4b7c-8319-7086e679e11e",
     "extra": {
+      "API_URL": "http://eva-app-alb-330167478.us-east-1.elb.amazonaws.com",
       "eas": {
         "projectId": "97637b15-5560-4e3a-b6b2-ef717ca99b43"
       }
     },
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/eva-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -26,15 +27,16 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/eva-logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.eva.alert"
+      "package": "com.eva.alert",
+      "usesCleartextTraffic": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/eva-logo.png"
     },
     "plugins": [
       "expo-notifications"

@@ -17,6 +17,9 @@
     "production": {
       "autoIncrement": true,
       "credentialsSource": "remote",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://eva-app-alb-330167478.us-east-1.elb.amazonaws.com"
+      },
       "android": {
         "buildType": "app-bundle"
       }
