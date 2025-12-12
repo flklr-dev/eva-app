@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, ActivityIndicator, Modal } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, Modal, Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '../components/Button';
 import { BottomNavBar, BottomTab } from '../components/BottomNavBar';
+import { MapView, LatLng, Marker } from '../components/MapView';
 import { useAuth } from '../context/AuthContext';
 import { 
   registerForPushNotifications, 
@@ -13,6 +14,9 @@ import {
   addNotificationListeners,
   getSubscriptionStatus
 } from '../services/notificationService';
+import { MapPin, Home, Mail, ChevronDown, Bluetooth } from 'lucide-react-native';
+import * as LocationService from '../services/locationService';
+import { Alert } from 'react-native';
 
 const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
@@ -33,43 +37,75 @@ const PlaceholderTab: React.FC<{ name: string }> = ({ name }) => (
   </View>
 );
 
+const friendMarkers: Array<{ id: string; coordinate: LatLng; name: string; status: string }> = [
+  { id: 'friend-1', coordinate: { latitude: 37.426, longitude: -122.160 }, name: 'Emma', status: 'Safe' },
+  { id: 'friend-2', coordinate: { latitude: 37.432, longitude: -122.145 }, name: 'Lucas', status: 'En Route' },
+  { id: 'friend-3', coordinate: { latitude: 37.415, longitude: -122.148 }, name: 'Maya', status: 'Online' },
+];
+
+const ACTION_BUTTONS = [
+  { key: 'SOS', label: 'SOS', icon: null, color: '#000000', background: '#F1F8E9', isText: true },
+  { key: 'LOCATION', label: 'Share Location', icon: MapPin, color: '#000000', background: '#F1F8E9' },
+  { key: 'HOME', label: "I'm Home", icon: Home, color: '#000000', background: '#F1F8E9' },
+  { key: 'MESSAGE', label: 'Message', icon: Mail, color: '#000000', background: '#F1F8E9' },
+];
+
 const LocationTab: React.FC = () => {
   const { token } = useAuth();
+  const insets = useSafeAreaInsets();
   const [isNotified, setIsNotified] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Location state
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
+  const [showLocationPermissionModal, setShowLocationPermissionModal] = useState(false);
+  const [locationPermissionMessage, setLocationPermissionMessage] = useState<string>('');
+  const [isRequestingLocation, setIsRequestingLocation] = useState(true);
+  
+  // Bluetooth state
+  const [isBluetoothConnected, setIsBluetoothConnected] = useState(false); // false = red, true = green
 
-  // Load notification state on mount and sync with server
-  useEffect(() => {
-    loadNotificationState();
-    setupNotificationListeners();
-  }, [token]);
+  const initialRegion = useMemo(() => {
+    // Use user location if available, otherwise default
+    if (userLocation) {
+      return {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+    }
+    return {
+      latitude: 37.426,
+      longitude: -122.163,
+      latitudeDelta: 0.07,
+      longitudeDelta: 0.07,
+    };
+  }, [userLocation]);
 
   const loadNotificationState = async () => {
     try {
       const savedToken = await AsyncStorage.getItem('pushToken');
       if (savedToken) setPushToken(savedToken);
 
-      // Sync with server if we have an auth token
       if (token) {
         const serverStatus = await getSubscriptionStatus(token);
         if (serverStatus !== null) {
           setIsNotified(serverStatus);
           await AsyncStorage.setItem('notificationState', JSON.stringify(serverStatus));
         } else {
-          // Fall back to local state if server is unreachable
           const savedState = await AsyncStorage.getItem('notificationState');
           if (savedState) setIsNotified(JSON.parse(savedState));
         }
       } else {
-        // No auth token, use local state
         const savedState = await AsyncStorage.getItem('notificationState');
         if (savedState) setIsNotified(JSON.parse(savedState));
       }
     } catch (error) {
       console.error('Error loading notification state:', error);
-      // Fall back to local state on error
       const savedState = await AsyncStorage.getItem('notificationState');
       if (savedState) setIsNotified(JSON.parse(savedState));
     }
@@ -86,12 +122,74 @@ const LocationTab: React.FC = () => {
     );
   };
 
+  // Request location permission and get location on mount
+  useEffect(() => {
+    requestLocationPermissionAndFetch();
+  }, []);
+
+  const requestLocationPermissionAndFetch = async () => {
+    try {
+      setIsRequestingLocation(true);
+      
+      // Request permission
+      const permissionStatus = await LocationService.requestLocationPermission();
+      
+      if (permissionStatus.granted) {
+        setLocationPermissionGranted(true);
+        
+        // Get current location
+        const location = await LocationService.getCurrentLocation();
+        
+        if (location) {
+          setUserLocation({
+            latitude: location.latitude,
+            longitude: location.longitude,
+          });
+        } else {
+          // Location fetch failed but permission granted - show error
+          setLocationPermissionMessage('Unable to get your location. Please ensure location services are enabled.');
+          setShowLocationPermissionModal(true);
+        }
+      } else {
+        // Permission denied
+        setLocationPermissionGranted(false);
+        setLocationPermissionMessage(
+          permissionStatus.message || 
+          'Location permission is required for EVA Alert to work. Please enable it in your device settings.'
+        );
+        setShowLocationPermissionModal(true);
+      }
+    } catch (error) {
+      console.error('Error requesting location:', error);
+      setLocationPermissionMessage('An error occurred while requesting location access.');
+      setShowLocationPermissionModal(true);
+    } finally {
+      setIsRequestingLocation(false);
+    }
+  };
+
+  const handleOpenSettings = async () => {
+    await LocationService.openLocationSettings();
+    setShowLocationPermissionModal(false);
+  };
+
+  const handleRetryLocation = async () => {
+    setShowLocationPermissionModal(false);
+    await requestLocationPermissionAndFetch();
+  };
+
+  useEffect(() => {
+    loadNotificationState();
+    const cleanup = setupNotificationListeners();
+    return () => {
+      cleanup();
+    };
+  }, [token]);
+
   const handleNotifyToggle = async () => {
     if (isNotified) {
-      // Show confirmation modal when canceling
       setShowCancelModal(true);
     } else {
-      // Enable notification
       await enableNotifications();
     }
   };
@@ -99,8 +197,6 @@ const LocationTab: React.FC = () => {
   const enableNotifications = async () => {
     try {
       setIsProcessing(true);
-
-      // Get push token
       let expoPushToken = pushToken;
       if (!expoPushToken) {
         expoPushToken = await registerForPushNotifications();
@@ -113,7 +209,6 @@ const LocationTab: React.FC = () => {
         await AsyncStorage.setItem('pushToken', expoPushToken);
       }
 
-      // Subscribe via backend
       if (token) {
         const success = await subscribeToPushNotifications(expoPushToken, token);
         if (success) {
@@ -131,7 +226,6 @@ const LocationTab: React.FC = () => {
   const confirmCancel = async () => {
     try {
       setIsProcessing(true);
-
       if (pushToken && token) {
         const success = await unsubscribeFromPushNotifications(pushToken, token);
         if (success) {
@@ -153,20 +247,84 @@ const LocationTab: React.FC = () => {
 
   return (
     <>
-      <View style={styles.locationTab}>
-        <Text style={styles.locationTitle}>Hello!</Text>
-        <Text style={styles.locationDesc}>We will release the full version of the app in the coming weeks.</Text>
-        
-        <Button 
-          style={isNotified ? {...styles.notifyButton, ...styles.notifyButtonActive} : styles.notifyButton}
-          onPress={handleNotifyToggle}
-          disabled={isProcessing}
-        >
-          {isProcessing ? 'Processing...' : (isNotified ? 'Notified ✓' : 'Notify Me')}
-        </Button>
+      <View style={styles.mapWrapper}>
+        {isRequestingLocation ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Requesting location access...</Text>
+          </View>
+        ) : (
+          <MapView
+            style={StyleSheet.absoluteFill}
+            initialRegion={initialRegion}
+            showsUserLocation={locationPermissionGranted}
+            userLocation={userLocation}
+            markers={friendMarkers}
+          />
+        )}
+
+        {locationPermissionGranted && (
+          <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
+            <BlurView intensity={80} tint="light" style={styles.statusChip}>
+              <View style={[styles.statusDot, { backgroundColor: friendMarkers.length === 0 ? '#EF4444' : '#34D399' }]} />
+              <Text style={styles.statusText} numberOfLines={1}>
+                <Text style={styles.statusTextMain}>{friendMarkers.length} {friendMarkers.length === 1 ? 'friend' : 'friends'}</Text>
+                <Text style={styles.statusTextOnline}> online</Text>
+              </Text>
+              <TouchableOpacity style={styles.dropdownButton} onPress={() => console.log('Dropdown pressed')}>
+                <ChevronDown size={16} color="#000000" />
+              </TouchableOpacity>
+            </BlurView>
+            
+            {/* Bluetooth Status Icon - Positioned absolutely on the right */}
+            <BlurView intensity={80} tint="light" style={styles.bluetoothContainer}>
+              <Bluetooth 
+                size={20} 
+                color={isBluetoothConnected ? '#34D399' : '#EF4444'} 
+                strokeWidth={2.5}
+              />
+            </BlurView>
+          </View>
+        )}
       </View>
 
-      {/* Cancel Confirmation Modal */}
+      {/* Location Permission Modal */}
+      <Modal
+        visible={showLocationPermissionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLocationPermissionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Location Permission Required</Text>
+            <Text style={styles.modalMessage}>
+              {locationPermissionMessage}
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={styles.modalButtonCancel} 
+                onPress={() => setShowLocationPermissionModal(false)}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.modalButtonConfirm} 
+                onPress={handleRetryLocation}
+              >
+                <Text style={styles.modalButtonTextConfirm}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity 
+              style={styles.modalButtonSecondary} 
+              onPress={handleOpenSettings}
+            >
+              <Text style={styles.modalButtonTextSecondary}>Open Settings</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Notification Cancel Modal */}
       <Modal
         visible={showCancelModal}
         transparent
@@ -175,9 +333,8 @@ const LocationTab: React.FC = () => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Cancel Notification?</Text>
-            <Text style={styles.modalMessage}>You will no longer receive updates about the app release.</Text>
-            
+            <Text style={styles.modalTitle}>Cancel Notifications?</Text>
+            <Text style={styles.modalMessage}>You will no longer receive updates.</Text>
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.modalButtonCancel} onPress={dismissModal}>
                 <Text style={styles.modalButtonTextCancel}>Keep Notified</Text>
@@ -232,6 +389,7 @@ const ProfileTab: React.FC = () => {
 
 export const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState('LOCATION');
+  const insets = useSafeAreaInsets();
 
   const renderContent = () => {
     switch (activeTab) {
@@ -246,23 +404,54 @@ export const HomeScreen: React.FC = () => {
 
   return (
     <ImageBackground source={backgroundImage} style={{ flex: 1 }} imageStyle={{ resizeMode: 'cover' }}>
-        <SafeAreaView style={{ flex: 1 }}>
+        <SafeAreaView style={{ flex: 1 }} edges={[]}>
 
       <View style={styles.root}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.brand}>EVA</Text>
-        </View>
-
         {/* Main Content */}
         <View style={styles.content}>{renderContent()}</View>
 
-        {/* Bottom Navigation */}
-        <BottomNavBar
-          tabs={TABS}
-          activeKey={activeTab}
-          onTabPress={setActiveTab}
-        />
+        {/* Unified Bottom Sheet */}
+        <View style={styles.bottomSheetWrapper}>
+          <BlurView intensity={100} tint="light" style={styles.bottomSheetContainer}>
+            <View style={styles.bottomSheetBorder} />
+            <View style={styles.bottomSheetContent}>
+             <View style={styles.bottomSheetHandle} />
+             
+             {/* Quick Actions */}
+             <View style={styles.quickActionsRow}>
+                {ACTION_BUTTONS.map(action => (
+                  <TouchableOpacity
+                    key={action.key}
+                    style={[styles.quickActionButton, { backgroundColor: 'rgba(255, 255, 255, 0.6)' }]}
+                    onPress={() => console.log(`Pressed ${action.key}`)}
+                    activeOpacity={0.8}
+                  >
+                    {action.isText ? (
+                      <Text style={styles.sosText}>SOS</Text>
+                    ) : (
+                       action.icon && <action.icon 
+                         size={24} 
+                         color={action.color} 
+                         fill="none"
+                         strokeWidth={2}
+                       />
+                    )}
+                  </TouchableOpacity>
+                ))}
+             </View>
+
+             {/* Separator Line */}
+             <View style={styles.separator} />
+
+            {/* Bottom Navigation */}
+            <BottomNavBar
+              tabs={TABS}
+              activeKey={activeTab}
+              onTabPress={setActiveTab}
+            />
+            </View>
+          </BlurView>
+        </View>
       </View>
       </SafeAreaView>
     </ImageBackground>
@@ -289,31 +478,26 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    alignItems: 'stretch',
-    justifyContent: 'center',
-    marginBottom: 0, // Remove bottom margin
+    marginHorizontal: 0,
+    marginBottom: 0,
+  },
+  mapWrapper: {
+    flex: 1,
+    borderRadius: 0,
+    overflow: 'hidden',
+    marginHorizontal: 0,
+    marginBottom: 0,
+    backgroundColor: '#F8FAFC',
+    position: 'relative',
   },
   navBar: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    height: 70, // Reduced height
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderTopLeftRadius: 35,
-    borderTopRightRadius: 35,
-    borderColor: 'transparent',
-    borderWidth: 0,
-    paddingBottom: 0, // Remove padding
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0, // Align to bottom edge
-    zIndex: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -5 },
-    shadowOpacity: 0.02,
-    shadowRadius: 20,
-    elevation: 2,
+    height: 64,
+    backgroundColor: 'transparent',
+    paddingBottom: 0,
+    width: '100%',
   },
   navBtn: {
     alignItems: 'center',
@@ -339,38 +523,96 @@ const styles = StyleSheet.create({
     width: 64, height: 64, backgroundColor: '#F1F1F1', borderRadius: 32, alignItems:'center', justifyContent:'center', marginBottom: 18},
   placeholderTitle: { fontSize: 32, fontWeight: '300', color:'#111827' },
   placeholderDesc: { fontSize: 14, color:'#6B7280', marginTop: 8, textAlign:'center' },
-  locationTab: { 
-    flex:1, 
-    alignItems:'flex-start', 
-    justifyContent:'flex-start', 
-    padding:32,
-    paddingTop: height * 0.25, // Position higher on screen
-    width: '100%',
-  },
-  locationTitle: { 
-    fontSize: 40, 
-    color:'#111827', 
-    fontWeight:'300', 
-    marginBottom: 12,
-    textAlign: 'left',
-  },
-  locationDesc: { 
-    color:'#111827', 
-    fontSize: 14, 
-    marginBottom: 32, 
-    maxWidth: width * 0.8,
-    textAlign: 'left',
-  },
-  notifyButton: {
+  overlayTop: {
     position: 'absolute',
-    bottom: 100,
-    left: 32,
-    right: 32,
-    maxWidth: 320,
-    alignSelf: 'center',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 3,
+    paddingHorizontal: 24,
   },
-  notifyButtonActive: {
-    backgroundColor: '#D4F4DD',
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 24,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    minWidth: 180,
+    overflow: 'hidden',
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#34D399',
+    marginRight: 10,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#000000',
+    letterSpacing: 0.2,
+    flexShrink: 1,
+    flexGrow: 0,
+  },
+  statusTextMain: {
+    fontWeight: '600',
+    color: '#000000',
+  },
+  statusTextOnline: {
+    fontWeight: '400',
+    color: '#6B7280',
+  },
+  dropdownButton: {
+    marginLeft: 8,
+    padding: 4,
+  },
+  bluetoothContainer: {
+    position: 'absolute',
+    right: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  actionPanel: {
+    display: 'none',
+  },
+  actionButton: {
+    flex: 1,
+    marginHorizontal: 6,
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
   },
   profileTab: {
     flex: 1,
@@ -416,6 +658,84 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     alignSelf: 'center',
   },
+  bottomSheetWrapper: {
+    position: 'absolute',
+    bottom: 24,
+    left: 16,
+    right: 16,
+    borderRadius: 36,
+    overflow: 'hidden',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  bottomSheetContainer: {
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.15)', // Ultra-light glass effect
+    width: '100%',
+    position: 'relative',
+  },
+  bottomSheetBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 36,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    pointerEvents: 'none',
+  },
+  bottomSheetContent: {
+    paddingTop: 12,
+    paddingBottom: 8,
+    width: '100%',
+  },
+  bottomSheetHandle: {
+    width: 48,
+    height: 5,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginBottom: 20,
+    marginTop: 4,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  quickActionButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  sosText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
+    fontFamily: 'System', // Use system font to look native
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -448,9 +768,34 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: 'center',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
   modalButtons: {
     flexDirection: 'row',
-    gap: 12,
+    marginBottom: 12,
+  },
+  modalButtonSecondary: {
+    width: '100%',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  modalButtonTextSecondary: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalButtonCancel: {
     flex: 1,
@@ -458,6 +803,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
+    marginRight: 6,
   },
   modalButtonConfirm: {
     flex: 1,
@@ -465,6 +811,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#FF3B30',
     alignItems: 'center',
+    marginLeft: 6,
   },
   modalButtonTextCancel: {
     color: '#111827',

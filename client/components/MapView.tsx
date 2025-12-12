@@ -23,6 +23,10 @@ interface MapViewProps {
   };
   markers?: Marker[];
   showsUserLocation?: boolean;
+  userLocation?: {
+    latitude: number;
+    longitude: number;
+  } | null;
   style?: any;
 }
 
@@ -30,14 +34,16 @@ export const MapView: React.FC<MapViewProps> = ({
   initialRegion,
   markers = [],
   showsUserLocation = true,
+  userLocation = null,
   style,
 }) => {
   const webViewRef = useRef<WebView>(null);
 
   const generateMapHTML = () => {
-    const { latitude, longitude, latitudeDelta, longitudeDelta } = initialRegion;
-    const center = [latitude, longitude];
-    const zoom = Math.round(Math.log(360 / longitudeDelta) / Math.LN2);
+    // Use user location if available, otherwise use initial region
+    const centerLocation = userLocation || initialRegion;
+    const center = [centerLocation.latitude, centerLocation.longitude];
+    const zoom = Math.round(Math.log(360 / initialRegion.longitudeDelta) / Math.LN2);
 
     const markersJSON = JSON.stringify(
       markers.map((marker) => ({
@@ -48,6 +54,18 @@ export const MapView: React.FC<MapViewProps> = ({
         status: marker.status || '',
       }))
     );
+
+    const userLocationScript = userLocation && showsUserLocation ? `
+      const userPos = [${userLocation.latitude}, ${userLocation.longitude}];
+      L.circleMarker(userPos, {
+        radius: 10,
+        fillColor: '#4285F4',
+        color: '#ffffff',
+        weight: 3,
+        fillOpacity: 1
+      }).addTo(map).bindPopup('Your Location');
+      map.setView(userPos, ${zoom});
+    ` : '';
 
     return `
       <!DOCTYPE html>
@@ -68,7 +86,7 @@ export const MapView: React.FC<MapViewProps> = ({
             const map = L.map('map', {
               center: [${center[0]}, ${center[1]}],
               zoom: ${zoom},
-              zoomControl: true,
+              zoomControl: false,
               attributionControl: false
             });
 
@@ -79,24 +97,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
             const markers = ${markersJSON};
             
-            ${showsUserLocation ? `
-              if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                  (position) => {
-                    const userPos = [position.coords.latitude, position.coords.longitude];
-                    L.circleMarker(userPos, {
-                      radius: 8,
-                      fillColor: '#4285F4',
-                      color: '#ffffff',
-                      weight: 2,
-                      fillOpacity: 1
-                    }).addTo(map).bindPopup('Your Location');
-                    map.setView(userPos, ${zoom});
-                  },
-                  () => {}
-                );
-              }
-            ` : ''}
+            ${userLocationScript}
 
             markers.forEach(marker => {
               L.circleMarker([marker.lat, marker.lng], {
@@ -112,6 +113,14 @@ export const MapView: React.FC<MapViewProps> = ({
       </html>
     `;
   };
+
+  // Update map when userLocation changes
+  useEffect(() => {
+    if (webViewRef.current && userLocation) {
+      // Reload the map with new user location
+      webViewRef.current.reload();
+    }
+  }, [userLocation]);
 
   return (
     <View style={[styles.container, style]}>
