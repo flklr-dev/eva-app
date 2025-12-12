@@ -65,4 +65,8 @@ expo-env.d.ts
 
 # Generated native folders (Expo)
 /ios
-/android
+client/android/
+
+# Documentation and analysis files
+*.md
+mongodb-uri.txt
