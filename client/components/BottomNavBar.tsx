@@ -1,7 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 export type BottomTab = {
@@ -22,17 +20,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeKey,
   onTabPress,
 }) => {
-  const insets = useSafeAreaInsets();
-  const Container: React.ComponentType<any> =
-    Platform.OS === 'ios' ? BlurView : View;
-
-  const containerProps =
-    Platform.OS === 'ios'
-      ? { intensity: 80, tint: 'light' as const }
-      : {};
-
   return (
-    <Container style={styles.navBar} {...containerProps}>
+    <View style={styles.navBar}>
       {tabs.map(tab => {
         const isActive = tab.key === activeKey;
         const iconName = isActive ? tab.iconFilled : tab.icon;
@@ -46,7 +35,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             <Ionicons
               name={iconName}
               size={22}
-              color="#111827"
+              color={isActive ? '#007AFF' : '#111827'}
             />
             <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
               {tab.label}
@@ -54,7 +43,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
           </TouchableOpacity>
         );
       })}
-    </Container>
+    </View>
   );
 };
 
@@ -63,22 +52,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    height: 70,
-    backgroundColor:
-      Platform.OS === 'ios'
-        ? 'rgba(255, 255, 255, 0.25)'
-        : 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 30,
-    marginHorizontal: 8,
+    height: 64,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    marginHorizontal: 0,
     marginBottom: 0,
-    overflow: 'hidden',
-    paddingBottom: Platform.OS === 'ios' ? 10 : 8,
-    paddingTop: Platform.OS === 'ios' ? 10 : 8,
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: -5,
-    zIndex: 5,
+    overflow: 'visible',
+    paddingBottom: Platform.OS === 'ios' ? 8 : 6,
+    paddingTop: 8,
+    position: 'relative',
+    width: '100%',
   },
   navBtn: {
     alignItems: 'center',
@@ -94,7 +77,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   navLabelActive: {
-    color: '#111827',
+    color: '#007AFF',
     opacity: 1,
   },
 });

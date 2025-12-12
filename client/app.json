@@ -39,7 +39,13 @@
       "favicon": "./assets/eva-logo.png"
     },
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow EVA Alert to use your location to share your position with trusted contacts in emergency situations."
+        }
+      ]
     ],
     "owner": "kit-jorismulkenss-organization"
   }
