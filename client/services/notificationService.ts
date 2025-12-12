@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { getCleanedApiBaseUrl } from '../utils/apiConfig';
 
 // Configure notification behavior
 Notifications.setNotificationHandler({
@@ -72,8 +73,8 @@ export const subscribeToPushNotifications = async (
 ): Promise<boolean> => {
   try {
     const deviceType = Platform.OS as 'ios' | 'android';
-    // Use consistent API URL from environment
-    const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.118:3000';
+    // Use consistent API URL from shared config
+    const API_URL = getCleanedApiBaseUrl();
 
     const response = await fetch(`${API_URL}/api/notifications/subscribe`, {
       method: 'POST',
@@ -108,8 +109,8 @@ export const unsubscribeFromPushNotifications = async (
   apiToken: string
 ): Promise<boolean> => {
   try {
-    // Use consistent API URL from environment
-    const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.118:3000';
+    // Use consistent API URL from shared config
+    const API_URL = getCleanedApiBaseUrl();
 
     const response = await fetch(`${API_URL}/api/notifications/unsubscribe`, {
       method: 'POST',
@@ -156,8 +157,8 @@ export const getSubscriptionStatus = async (
   apiToken: string
 ): Promise<boolean | null> => {
   try {
-    // Use consistent API URL from environment
-    const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.118:3000';
+    // Use consistent API URL from shared config
+    const API_URL = getCleanedApiBaseUrl();
 
     const response = await fetch(`${API_URL}/api/notifications/status`, {
       method: 'GET',

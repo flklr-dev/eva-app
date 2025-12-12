@@ -252,10 +252,13 @@
         }
 
         const data = await response.json();
+        displaySubscribers(data.subscriptions);
         document.getElementById('totalSubscribers').textContent = data.total;
         updateTimestamp();
       } catch (error) {
         console.error('Error loading subscribers:', error);
+        document.getElementById('subscribersBody').innerHTML = 
+          '<tr><td colspan="3" class="text-center text-muted">Error loading data</td></tr>';
       }
     }
 
@@ -448,6 +451,38 @@
       `}).join('');
     }
 
+    function displaySubscribers(subscriptions) {
+      const tbody = document.getElementById('subscribersBody');
+      
+      if (!subscriptions || subscriptions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted" style="padding: 40px;">No subscribers found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = subscriptions.map(sub => {
+        const name = sub.userId?.name || 'Unknown User';
+        const email = sub.userId?.email || 'No Email';
+        const initials = getInitials(name);
+        const date = new Date(sub.subscribedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        
+        return `
+        <tr>
+          <td>
+            <div class="user-cell">
+              <div class="avatar-placeholder">${initials}</div>
+              <div class="user-info">
+                <span class="user-name">${name}</span>
+                <span class="user-email">${email}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+             <span class="badge-device">${sub.deviceType || 'Mobile'}</span>
+          </td>
+          <td style="color: #6B7280; font-size: 13px;">${date}</td>
+        </tr>
+      `}).join('');
+    }
 
     // --- Export Users to Excel ---
     function exportUsersToExcel() {
@@ -492,7 +527,55 @@
       XLSX.writeFile(wb, filename);
     }
 
-    // --- Export Subscribers to Excel (Removed - feature not available) ---
+    // --- Export Subscribers to Excel ---
+    function exportSubscribersToExcel() {
+      const subscribersTable = document.getElementById('subscribersTable');
+      if (!subscribersTable) {
+        alert('No subscribers table found');
+        return;
+      }
+
+      // Get all subscriber rows
+      const rows = subscribersTable.querySelectorAll('tbody tr');
+      if (rows.length === 0 || rows[0].cells.length === 1) {
+        alert('No subscribers to export');
+        return;
+      }
+
+      const excelData = [];
+      rows.forEach(row => {
+        if (row.cells.length >= 3) {
+          const name = row.cells[0].querySelector('.user-name')?.textContent || 'N/A';
+          const email = row.cells[0].querySelector('.user-email')?.textContent || 'N/A';
+          const device = row.cells[1].textContent.trim();
+          const subscribed = row.cells[2].textContent.trim();
+          
+          excelData.push({
+            'Name': name,
+            'Email': email,
+            'Device': device,
+            'Subscribed Date': subscribed
+          });
+        }
+      });
+
+      if (excelData.length === 0) {
+        alert('No subscriber data to export');
+        return;
+      }
+
+      // Create workbook and worksheet
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Subscribers');
+
+      // Generate filename with date
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `EVA_Push_Subscribers_${timestamp}.xlsx`;
+
+      // Download the file
+      XLSX.writeFile(wb, filename);
+    }
 
     // --- Send Notification ---
     document.getElementById('notificationForm').addEventListener('submit', async (e) => {
@@ -522,7 +605,7 @@
           statusEl.textContent = `Success: ${data.message}`;
           statusEl.className = 'status-message success';
           e.target.reset();
-          loadSubscribers(); // Refresh subscriber count
+          loadSubscribers(); // Refresh on successful send
           loadUsers(); // Refresh users too
           setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
         } else {

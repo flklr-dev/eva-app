@@ -1,10 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCleanedApiBaseUrl } from './apiConfig';
 
-// Use your machine's IP address instead of localhost for Expo
-// Your IP: 192.168.1.118 (found via ipconfig)
-const API_BASE_URL = __DEV__ 
-  ? (process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.118:3000')  // Use env var with fallback
-  : 'http://localhost:3000';
+// Get cleaned API base URL
+const CLEANED_API_BASE_URL = getCleanedApiBaseUrl();
+
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'user_data';
 
@@ -24,9 +23,9 @@ export const authService = {
   // Register user
   register: async (name: string, email: string, password: string): Promise<AuthResponse> => {
     console.log('[authService] Starting registration...');
-    console.log('[authService] API URL:', `${API_BASE_URL}/api/auth/register`);
+    console.log('[authService] API URL:', `${CLEANED_API_BASE_URL}/api/auth/register`);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      const response = await fetch(`${CLEANED_API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,9 +60,11 @@ export const authService = {
     } catch (error: any) {
       console.log('[authService] Register error:', error.message);
       // Network error (server not reachable)
-      if (error.message === 'Failed to fetch' || error.message.includes('Network request failed')) {
-        const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
-        throw new Error(`Cannot connect to server. Please check:\n1. Server is running on ${serverUrl}\n2. Both devices are on the same WiFi\n3. Your internet connection is active`);
+      if (error.message === 'Failed to fetch' || 
+          error.message.includes('Network request failed') ||
+          error.message.includes('NetworkError') ||
+          error.message.includes('TypeError: Network request failed')) {
+        throw new Error('Cannot connect to server. Please check your internet connection and try again.');
       }
       throw error instanceof Error ? error : new Error('Network error');
     }
@@ -72,9 +73,9 @@ export const authService = {
   // Login user
   login: async (email: string, password: string): Promise<AuthResponse> => {
     console.log('[authService] Starting login...');
-    console.log('[authService] API URL:', `${API_BASE_URL}/api/auth/login`);
+    console.log('[authService] API URL:', `${CLEANED_API_BASE_URL}/api/auth/login`);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const response = await fetch(`${CLEANED_API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -112,9 +113,11 @@ export const authService = {
     } catch (error: any) {
       console.log('[authService] Login error:', error.message);
       // Network error (server not reachable)
-      if (error.message === 'Failed to fetch' || error.message.includes('Network request failed')) {
-        const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
-        throw new Error(`Cannot connect to server. Please check:\n1. Server is running on ${serverUrl}\n2. Both devices are on the same WiFi\n3. Your internet connection is active`);
+      if (error.message === 'Failed to fetch' || 
+          error.message.includes('Network request failed') ||
+          error.message.includes('NetworkError') ||
+          error.message.includes('TypeError: Network request failed')) {
+        throw new Error('Cannot connect to server. Please check your internet connection and try again.');
       }
       throw error instanceof Error ? error : new Error('Network error');
     }
@@ -126,7 +129,7 @@ export const authService = {
       const token = await AsyncStorage.getItem(TOKEN_KEY);
       if (!token) return null;
 
-      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      const response = await fetch(`${CLEANED_API_BASE_URL}/api/auth/me`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,  // Fixed header format
