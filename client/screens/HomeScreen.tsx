@@ -50,7 +50,7 @@ const ACTION_BUTTONS = [
   { key: 'MESSAGE', label: 'Message', iconName: 'email', iconNameActive: 'email', color: '#000000', background: '#F1F8E9' },
 ];
 
-const LocationTab: React.FC = () => {
+const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAnim?: Animated.Value; onDismissNotification?: () => void }> = ({ showHomeNotification = false, homeNotificationAnim, onDismissNotification }) => {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const [isNotified, setIsNotified] = useState(false);
@@ -263,27 +263,75 @@ const LocationTab: React.FC = () => {
         )}
 
         {locationPermissionGranted && (
-          <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
-            <BlurView intensity={80} tint="light" style={styles.statusChip}>
-              <View style={[styles.statusDot, { backgroundColor: friendMarkers.length === 0 ? '#EF4444' : '#34D399' }]} />
-              <Text style={styles.statusText} numberOfLines={1}>
-                <Text style={styles.statusTextMain}>{friendMarkers.length} {friendMarkers.length === 1 ? 'friend' : 'friends'}</Text>
-                <Text style={styles.statusTextOnline}> online</Text>
-              </Text>
-              <TouchableOpacity style={styles.dropdownButton} onPress={() => console.log('Dropdown pressed')}>
-                <MaterialCommunityIcons name="chevron-down" size={16} color="#000000" />
-              </TouchableOpacity>
-            </BlurView>
-            
-            {/* Bluetooth Status Icon - Positioned absolutely on the right */}
-            <BlurView intensity={80} tint="light" style={styles.bluetoothContainer}>
-              <MaterialCommunityIcons 
-                name="bluetooth" 
-                size={20} 
-                color={isBluetoothConnected ? '#34D399' : '#EF4444'} 
-              />
-            </BlurView>
-          </View>
+          <>
+            {/* Home Notification - Above status chip */}
+            {showHomeNotification && homeNotificationAnim && (
+              <Animated.View
+                style={[
+                  styles.homeNotificationContainer,
+                  {
+                    top: insets.top + 8 - 15,
+                    opacity: homeNotificationAnim,
+                    transform: [
+                      {
+                        translateY: homeNotificationAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [-20, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    if (homeNotificationAnim) {
+                      Animated.timing(homeNotificationAnim, {
+                        toValue: 0,
+                        duration: 300,
+                        useNativeDriver: true,
+                      }).start(() => {
+                        onDismissNotification?.();
+                      });
+                    }
+                  }}
+                >
+                  <BlurView intensity={80} tint="light" style={styles.homeNotification}>
+                    <View style={styles.homeNotificationIconCircle}>
+                      <MaterialCommunityIcons name="home-variant" size={20} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.homeNotificationTextContainer}>
+                      <Text style={styles.homeNotificationTitle}>Send Safe home</Text>
+                      <Text style={styles.homeNotificationSubtitle}>You are safely home.</Text>
+                    </View>
+                  </BlurView>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+
+            <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
+              <BlurView intensity={80} tint="light" style={styles.statusChip}>
+                <View style={[styles.statusDot, { backgroundColor: friendMarkers.length === 0 ? '#EF4444' : '#34D399' }]} />
+                <Text style={styles.statusText} numberOfLines={1}>
+                  <Text style={styles.statusTextMain}>{friendMarkers.length} {friendMarkers.length === 1 ? 'friend' : 'friends'}</Text>
+                  <Text style={styles.statusTextOnline}> online</Text>
+                </Text>
+                <TouchableOpacity style={styles.dropdownButton} onPress={() => console.log('Dropdown pressed')}>
+                  <MaterialCommunityIcons name="chevron-down" size={16} color="#000000" />
+                </TouchableOpacity>
+              </BlurView>
+              
+              {/* Bluetooth Status Icon - Positioned absolutely on the right */}
+              <BlurView intensity={80} tint="light" style={styles.bluetoothContainer}>
+                <MaterialCommunityIcons 
+                  name="bluetooth" 
+                  size={20} 
+                  color={isBluetoothConnected ? '#34D399' : '#EF4444'} 
+                />
+              </BlurView>
+            </View>
+          </>
         )}
       </View>
 
@@ -392,7 +440,8 @@ export const HomeScreen: React.FC = () => {
   const [isSOSMode, setIsSOSMode] = useState(false);
   const [isHoldingSOS, setIsHoldingSOS] = useState(false);
   const [isLocationMode, setIsLocationMode] = useState(false);
-  const [isHomeMode, setIsHomeMode] = useState(false);
+  const [isMessageMode, setIsMessageMode] = useState(false);
+  const [showHomeNotification, setShowHomeNotification] = useState(false);
   const [shareMyLocation, setShareMyLocation] = useState(true);
   const [shareWithEveryone, setShareWithEveryone] = useState(true);
   const insets = useSafeAreaInsets();
@@ -400,6 +449,7 @@ export const HomeScreen: React.FC = () => {
   const toggleAnim2 = useRef(new Animated.Value(1)).current;
   const pulseAnim1 = useRef(new Animated.Value(1)).current;
   const pulseAnim2 = useRef(new Animated.Value(1)).current;
+  const homeNotificationAnim = useRef(new Animated.Value(0)).current;
   const sosSentRef = useRef(false);
   const shouldAnimate1 = useRef(false);
   const shouldAnimate2 = useRef(false);
@@ -423,19 +473,19 @@ export const HomeScreen: React.FC = () => {
         pulseAnim1.setValue(1);
         pulseAnim2.setValue(1);
       }
-      // Deactivate Home mode if it's active
-      if (isHomeMode) {
-        setIsHomeMode(false);
+      // Deactivate Message mode if it's active
+      if (isMessageMode) {
+        setIsMessageMode(false);
       }
       setIsLocationMode(true);
     }
   };
 
-  // Home button handler
-  const handleHomePress = () => {
-    // Toggle Home mode - if already in Home mode, exit it
-    if (isHomeMode) {
-      setIsHomeMode(false);
+  // Message button handler
+  const handleMessagePress = () => {
+    // Toggle Message mode - if already in Message mode, exit it
+    if (isMessageMode) {
+      setIsMessageMode(false);
     } else {
       // Deactivate SOS mode if it's active
       if (isSOSMode) {
@@ -454,8 +504,31 @@ export const HomeScreen: React.FC = () => {
       if (isLocationMode) {
         setIsLocationMode(false);
       }
-      setIsHomeMode(true);
+      setIsMessageMode(true);
     }
+  };
+
+  // Home button handler - shows notification
+  const handleHomePress = () => {
+    console.log('Home button pressed - showing notification');
+    // Show notification (animation handled in useEffect)
+    setShowHomeNotification(true);
+    
+    // Auto-dismiss after 4 seconds
+    setTimeout(() => {
+      Animated.timing(homeNotificationAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowHomeNotification(false);
+      });
+    }, 4000);
+  };
+
+  // Dismiss notification callback
+  const handleDismissNotification = () => {
+    setShowHomeNotification(false);
   };
 
   // Handle sending home status messages
@@ -512,9 +585,9 @@ export const HomeScreen: React.FC = () => {
       if (isLocationMode) {
         setIsLocationMode(false);
       }
-      // Deactivate Home mode if it's active
-      if (isHomeMode) {
-        setIsHomeMode(false);
+      // Deactivate Message mode if it's active
+      if (isMessageMode) {
+        setIsMessageMode(false);
       }
       setIsSOSMode(true);
       sosSentRef.current = false;
@@ -630,6 +703,26 @@ export const HomeScreen: React.FC = () => {
   };
 
 
+  // Trigger animation when notification becomes visible
+  useEffect(() => {
+    if (showHomeNotification) {
+      console.log('Notification should be visible, starting animation');
+      // Reset and animate in
+      homeNotificationAnim.setValue(0);
+      requestAnimationFrame(() => {
+        Animated.spring(homeNotificationAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 8,
+        }).start();
+      });
+    } else {
+      // Reset animation when hidden
+      homeNotificationAnim.setValue(0);
+    }
+  }, [showHomeNotification]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -640,12 +733,12 @@ export const HomeScreen: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'LOCATION': return <LocationTab />;
+      case 'LOCATION': return <LocationTab showHomeNotification={showHomeNotification} homeNotificationAnim={homeNotificationAnim} onDismissNotification={handleDismissNotification} />;
       case 'FRIENDS': return <PlaceholderTab name="Friends" />;
       case 'ACTIVITY': return <PlaceholderTab name="Activity" />;
       case 'DEVICE': return <PlaceholderTab name="Device" />;
       case 'PROFILE': return <ProfileTab />;
-      default: return <LocationTab />;
+      default: return <LocationTab showHomeNotification={showHomeNotification} homeNotificationAnim={homeNotificationAnim} onDismissNotification={handleDismissNotification} />;
     }
   };
 
@@ -677,6 +770,8 @@ export const HomeScreen: React.FC = () => {
                         handleLocationPress();
                       } else if (action.key === 'HOME') {
                         handleHomePress();
+                      } else if (action.key === 'MESSAGE') {
+                        handleMessagePress();
                       } else {
                         console.log(`Pressed ${action.key}`);
                       }
@@ -692,7 +787,9 @@ export const HomeScreen: React.FC = () => {
                             name={action.iconName as any}
                             size={24} 
                             color={
-                              (isHomeMode && action.key === 'HOME') || (isLocationMode && action.key === 'LOCATION')
+                              (isMessageMode && action.key === 'MESSAGE') || 
+                              (isLocationMode && action.key === 'LOCATION') ||
+                              (showHomeNotification && action.key === 'HOME')
                                 ? '#007BFE' 
                                 : action.color
                             }
@@ -787,8 +884,8 @@ export const HomeScreen: React.FC = () => {
                </View>
              )}
 
-             {/* Home Settings - Shown when home mode is active, above separator */}
-             {isHomeMode && (
+             {/* Message Settings - Shown when message mode is active, above separator */}
+             {isMessageMode && (
                <View style={styles.homeSettingsContainer}>
                  <View style={styles.homeSettingsHeader}>
                    <Text style={styles.homeSettingsTitle}>Message</Text>
@@ -1014,6 +1111,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  homeNotificationContainer: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 11,
+    paddingHorizontal: 0,
+  },
+  homeNotification: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  homeNotificationIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  homeNotificationTextContainer: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  homeNotificationTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 2,
+  },
+  homeNotificationSubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#6B7280',
   },
   actionPanel: {
     display: 'none',
