@@ -17,6 +17,24 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as LocationService from '../services/locationService';
 import { Alert } from 'react-native';
+import { ACTION_BUTTONS } from '../constants/quickActions';
+import { COLORS, ANIMATION_CONFIG } from '../constants/theme';
+import { useSOSAnimation } from '../hooks/useSOSAnimation';
+import { useHomeNotification } from '../hooks/useHomeNotification';
+import { useQuickActionMode } from '../hooks/useQuickActionMode';
+import type { QuickActionKey, HomeStatus } from '../types/quickActions';
+import { QuickActionButton } from '../components/QuickActions';
+import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel } from '../components/BottomSheet';
+import {
+  StatusChip,
+  BluetoothIndicator,
+  HomeNotification,
+  LocationPermissionModal,
+  NotificationCancelModal,
+} from '../components/LocationTab';
+import { FriendsTab } from '../components/FriendsTab';
+import { Friend, FriendWithDistance } from '../types/friends';
+import { calculateDistance } from '../utils/distanceCalculator';
 
 const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
@@ -37,18 +55,23 @@ const PlaceholderTab: React.FC<{ name: string }> = ({ name }) => (
   </View>
 );
 
-const friendMarkers: Array<{ id: string; coordinate: LatLng; name: string; status: string }> = [
-  { id: 'friend-1', coordinate: { latitude: 37.426, longitude: -122.160 }, name: 'Emma', status: 'Safe' },
-  { id: 'friend-2', coordinate: { latitude: 37.432, longitude: -122.145 }, name: 'Lucas', status: 'En Route' },
-  { id: 'friend-3', coordinate: { latitude: 37.415, longitude: -122.148 }, name: 'Maya', status: 'Online' },
+// Mock friend data
+const mockFriends: Friend[] = [
+  { id: 'friend-1', name: 'Emma', country: 'Netherlands', coordinate: { latitude: 37.426, longitude: -122.160 }, status: 'online' },
+  { id: 'friend-2', name: 'Lucas', country: 'Germany', coordinate: { latitude: 37.432, longitude: -122.145 }, status: 'online' },
+  { id: 'friend-3', name: 'Maya', country: 'France', coordinate: { latitude: 37.415, longitude: -122.148 }, status: 'online' },
+  { id: 'friend-4', name: 'Alex', country: 'Spain', coordinate: { latitude: 37.440, longitude: -122.150 }, status: 'online' },
 ];
 
-const ACTION_BUTTONS = [
-  { key: 'SOS', label: 'SOS', iconName: null, color: '#000000', background: '#F1F8E9', isText: true },
-  { key: 'LOCATION', label: 'Share Location', iconName: 'map-marker', iconNameActive: 'map-marker', color: '#000000', background: '#F1F8E9' },
-  { key: 'HOME', label: "I'm Home", iconName: 'home-variant', iconNameActive: 'home-variant', color: '#000000', background: '#F1F8E9' },
-  { key: 'MESSAGE', label: 'Message', iconName: 'email', iconNameActive: 'email', color: '#000000', background: '#F1F8E9' },
-];
+// Convert to markers format for LocationTab
+const friendMarkers: Array<{ id: string; coordinate: LatLng; name: string; status: string }> = mockFriends.map(friend => ({
+  id: friend.id,
+  coordinate: friend.coordinate,
+  name: friend.name,
+  status: friend.status,
+}));
+
+// ACTION_BUTTONS now imported from constants/quickActions.ts
 
 const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAnim?: Animated.Value; onDismissNotification?: () => void }> = ({ showHomeNotification = false, homeNotificationAnim, onDismissNotification }) => {
   const { token } = useAuth();
@@ -266,134 +289,37 @@ const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAn
           <>
             {/* Home Notification - Above status chip */}
             {showHomeNotification && homeNotificationAnim && (
-              <Animated.View
-                style={[
-                  styles.homeNotificationContainer,
-                  {
-                    top: insets.top + 8 - 15,
-                    opacity: homeNotificationAnim,
-                    transform: [
-                      {
-                        translateY: homeNotificationAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-20, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    if (homeNotificationAnim) {
-                      Animated.timing(homeNotificationAnim, {
-                        toValue: 0,
-                        duration: 300,
-                        useNativeDriver: true,
-                      }).start(() => {
-                        onDismissNotification?.();
-                      });
-                    }
-                  }}
-                >
-                  <BlurView intensity={80} tint="light" style={styles.homeNotification}>
-                    <View style={styles.homeNotificationIconCircle}>
-                      <MaterialCommunityIcons name="home-variant" size={20} color="#FFFFFF" />
-                    </View>
-                    <View style={styles.homeNotificationTextContainer}>
-                      <Text style={styles.homeNotificationTitle}>Send Safe home</Text>
-                      <Text style={styles.homeNotificationSubtitle}>You are safely home.</Text>
-                    </View>
-                  </BlurView>
-                </TouchableOpacity>
-              </Animated.View>
+              <HomeNotification
+                animValue={homeNotificationAnim}
+                onDismiss={() => onDismissNotification?.()}
+                topOffset={insets.top + 8 - 15}
+              />
             )}
 
             <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
-              <BlurView intensity={80} tint="light" style={styles.statusChip}>
-                <View style={[styles.statusDot, { backgroundColor: friendMarkers.length === 0 ? '#EF4444' : '#34D399' }]} />
-                <Text style={styles.statusText} numberOfLines={1}>
-                  <Text style={styles.statusTextMain}>{friendMarkers.length} {friendMarkers.length === 1 ? 'friend' : 'friends'}</Text>
-                  <Text style={styles.statusTextOnline}> online</Text>
-                </Text>
-                <TouchableOpacity style={styles.dropdownButton} onPress={() => console.log('Dropdown pressed')}>
-                  <MaterialCommunityIcons name="chevron-down" size={16} color="#000000" />
-                </TouchableOpacity>
-              </BlurView>
-              
-              {/* Bluetooth Status Icon - Positioned absolutely on the right */}
-              <BlurView intensity={80} tint="light" style={styles.bluetoothContainer}>
-                <MaterialCommunityIcons 
-                  name="bluetooth" 
-                  size={20} 
-                  color={isBluetoothConnected ? '#34D399' : '#EF4444'} 
-                />
-              </BlurView>
+              <StatusChip
+                friendCount={friendMarkers.length}
+                onDropdownPress={() => console.log('Dropdown pressed')}
+              />
+              <BluetoothIndicator isConnected={isBluetoothConnected} />
             </View>
           </>
         )}
       </View>
 
-      {/* Location Permission Modal */}
-      <Modal
+      <LocationPermissionModal
         visible={showLocationPermissionModal}
-        transparent
-        animationType="fade"
+        message={locationPermissionMessage}
         onRequestClose={() => setShowLocationPermissionModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Location Permission Required</Text>
-            <Text style={styles.modalMessage}>
-              {locationPermissionMessage}
-            </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={styles.modalButtonCancel} 
-                onPress={() => setShowLocationPermissionModal(false)}
-              >
-                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.modalButtonConfirm} 
-                onPress={handleRetryLocation}
-              >
-                <Text style={styles.modalButtonTextConfirm}>Retry</Text>
-              </TouchableOpacity>
-      </View>
-            <TouchableOpacity 
-              style={styles.modalButtonSecondary} 
-              onPress={handleOpenSettings}
-            >
-              <Text style={styles.modalButtonTextSecondary}>Open Settings</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        onRetry={handleRetryLocation}
+        onOpenSettings={handleOpenSettings}
+      />
 
-      {/* Notification Cancel Modal */}
-      <Modal
+      <NotificationCancelModal
         visible={showCancelModal}
-        transparent
-        animationType="fade"
         onRequestClose={dismissModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Cancel Notifications?</Text>
-            <Text style={styles.modalMessage}>You will no longer receive updates.</Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalButtonCancel} onPress={dismissModal}>
-                <Text style={styles.modalButtonTextCancel}>Keep Notified</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalButtonConfirm} onPress={confirmCancel}>
-                <Text style={styles.modalButtonTextConfirm}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onConfirm={confirmCancel}
+      />
     </>
   );
 };
@@ -437,291 +363,163 @@ const ProfileTab: React.FC = () => {
 
 export const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState('LOCATION');
-  const [isSOSMode, setIsSOSMode] = useState(false);
-  const [isHoldingSOS, setIsHoldingSOS] = useState(false);
-  const [isLocationMode, setIsLocationMode] = useState(false);
-  const [isMessageMode, setIsMessageMode] = useState(false);
-  const [showHomeNotification, setShowHomeNotification] = useState(false);
-  const [shareMyLocation, setShareMyLocation] = useState(true);
-  const [shareWithEveryone, setShareWithEveryone] = useState(true);
   const insets = useSafeAreaInsets();
-  const toggleAnim1 = useRef(new Animated.Value(1)).current;
-  const toggleAnim2 = useRef(new Animated.Value(1)).current;
-  const pulseAnim1 = useRef(new Animated.Value(1)).current;
-  const pulseAnim2 = useRef(new Animated.Value(1)).current;
-  const homeNotificationAnim = useRef(new Animated.Value(0)).current;
-  const sosSentRef = useRef(false);
-  const shouldAnimate1 = useRef(false);
-  const shouldAnimate2 = useRef(false);
+  
+  // Mock user location (in real app, get from location service)
+  const userLocation = { latitude: 37.426, longitude: -122.163 };
+  
+  // Calculate distances for friends
+  const friendsWithDistance: FriendWithDistance[] = React.useMemo(() => {
+    return mockFriends.map(friend => ({
+      ...friend,
+      distance: calculateDistance(
+        userLocation.latitude,
+        userLocation.longitude,
+        friend.coordinate.latitude,
+        friend.coordinate.longitude
+      ),
+    }));
+  }, []);
+  
+  // Bluetooth state (shared across tabs)
+  const [isBluetoothConnected] = useState(false);
+  
+  // Centralized state management using reducer
+  const {
+    // State
+    isSOSMode,
+    isLocationMode,
+    isMessageMode,
+    isHoldingSOS,
+    sosSent,
+    shareMyLocation,
+    shareWithEveryone,
+    // Actions
+    activateMode,
+    setSOSHolding,
+    setSOSSent,
+    resetSOSState,
+    setShareMyLocation,
+    setShareWithEveryone,
+  } = useQuickActionMode();
+  
+  // Use custom hooks for complex logic
+  const {
+    pulseAnim1,
+    pulseAnim2,
+    sosSentRef,
+    startPulse,
+    stopPulse,
+    markSOSSent,
+    resetSOSState: resetSOSAnimation,
+  } = useSOSAnimation();
+  
+  const {
+    isVisible: homeNotificationVisible,
+    animValue: homeNotificationAnim,
+    show: showHomeNotificationFn,
+    dismiss: dismissHomeNotification,
+  } = useHomeNotification();
+
+  // Sync SOS state when mode changes - only reset when exiting SOS mode
+  const prevSOSModeRef = useRef(isSOSMode);
+  useEffect(() => {
+    // Only reset if we're transitioning from SOS mode to non-SOS mode
+    if (prevSOSModeRef.current && !isSOSMode) {
+      resetSOSAnimation();
+      resetSOSState();
+    }
+    prevSOSModeRef.current = isSOSMode;
+  }, [isSOSMode, resetSOSAnimation, resetSOSState]);
 
   // Location button handler
   const handleLocationPress = () => {
-    // Toggle Location mode - if already in Location mode, exit it
-    if (isLocationMode) {
-      setIsLocationMode(false);
-    } else {
-      // Deactivate SOS mode if it's active
-      if (isSOSMode) {
-        setIsSOSMode(false);
-        setIsHoldingSOS(false);
-        sosSentRef.current = false;
-        // Stop animations and prevent them from continuing
-        shouldAnimate1.current = false;
-        shouldAnimate2.current = false;
-        pulseAnim1.stopAnimation();
-        pulseAnim2.stopAnimation();
-        pulseAnim1.setValue(1);
-        pulseAnim2.setValue(1);
-      }
-      // Deactivate Message mode if it's active
-      if (isMessageMode) {
-        setIsMessageMode(false);
-      }
-      setIsLocationMode(true);
+    activateMode('LOCATION');
+    // Reset SOS animation if switching from SOS mode
+    if (isSOSMode) {
+      resetSOSAnimation();
     }
   };
 
   // Message button handler
   const handleMessagePress = () => {
-    // Toggle Message mode - if already in Message mode, exit it
-    if (isMessageMode) {
-      setIsMessageMode(false);
-    } else {
-      // Deactivate SOS mode if it's active
-      if (isSOSMode) {
-        setIsSOSMode(false);
-        setIsHoldingSOS(false);
-        sosSentRef.current = false;
-        // Stop animations and prevent them from continuing
-        shouldAnimate1.current = false;
-        shouldAnimate2.current = false;
-        pulseAnim1.stopAnimation();
-        pulseAnim2.stopAnimation();
-        pulseAnim1.setValue(1);
-        pulseAnim2.setValue(1);
-      }
-      // Deactivate Location mode if it's active
-      if (isLocationMode) {
-        setIsLocationMode(false);
-      }
-      setIsMessageMode(true);
+    activateMode('MESSAGE');
+    // Reset SOS animation if switching from SOS mode
+    if (isSOSMode) {
+      resetSOSAnimation();
     }
   };
 
   // Home button handler - shows notification
   const handleHomePress = () => {
     console.log('Home button pressed - showing notification');
-    // Show notification (animation handled in useEffect)
-    setShowHomeNotification(true);
-    
-    // Auto-dismiss after 4 seconds
-    setTimeout(() => {
-      Animated.timing(homeNotificationAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        setShowHomeNotification(false);
-      });
-    }, 4000);
+    showHomeNotificationFn();
   };
 
   // Dismiss notification callback
   const handleDismissNotification = () => {
-    setShowHomeNotification(false);
+    dismissHomeNotification();
   };
 
   // Handle sending home status messages
-  const handleSendHomeStatus = (statusType: string) => {
+  const handleSendHomeStatus = (statusType: HomeStatus) => {
     console.log(`Sending home status: ${statusType}`);
     // TODO: Implement actual message sending logic
   };
 
-  // Toggle handlers with animation
-  const handleToggleShareMyLocation = () => {
-    const newValue = !shareMyLocation;
-    setShareMyLocation(newValue);
-    Animated.spring(toggleAnim1, {
-      toValue: newValue ? 1 : 0,
-      useNativeDriver: true,
-      tension: 100,
-      friction: 8,
-    }).start();
+  // Toggle handlers - now using ToggleSwitch component which handles its own animation
+  const handleToggleShareMyLocation = (value: boolean) => {
+    setShareMyLocation(value);
   };
 
-  const handleToggleShareWithEveryone = () => {
-    const newValue = !shareWithEveryone;
-    setShareWithEveryone(newValue);
-    Animated.spring(toggleAnim2, {
-      toValue: newValue ? 1 : 0,
-      useNativeDriver: true,
-      tension: 100,
-      friction: 8,
-    }).start();
+  const handleToggleShareWithEveryone = (value: boolean) => {
+    setShareWithEveryone(value);
   };
-
-  // Initialize toggle animations
-  useEffect(() => {
-    toggleAnim1.setValue(shareMyLocation ? 1 : 0);
-    toggleAnim2.setValue(shareWithEveryone ? 1 : 0);
-  }, []);
 
   // SOS button handlers
   const handleSOSPress = () => {
-    // Toggle SOS mode - if already in SOS mode, exit it
-    if (isSOSMode) {
-      setIsSOSMode(false);
-      setIsHoldingSOS(false);
-      sosSentRef.current = false;
-      // Stop animations and prevent them from continuing
-      shouldAnimate1.current = false;
-      shouldAnimate2.current = false;
-      pulseAnim1.stopAnimation();
-      pulseAnim2.stopAnimation();
-      pulseAnim1.setValue(1);
-      pulseAnim2.setValue(1);
-    } else {
-      // Deactivate Location mode if it's active
-      if (isLocationMode) {
-        setIsLocationMode(false);
-      }
-      // Deactivate Message mode if it's active
-      if (isMessageMode) {
-        setIsMessageMode(false);
-      }
-      setIsSOSMode(true);
-      sosSentRef.current = false;
-      // Reset animation flags
-      shouldAnimate1.current = false;
-      shouldAnimate2.current = false;
-      pulseAnim1.setValue(1);
-      pulseAnim2.setValue(1);
-    }
+    activateMode('SOS');
+    // Reset SOS animation state when toggling
+    resetSOSAnimation();
   };
 
   const handleSOSPressIn = () => {
-    setIsHoldingSOS(true);
-    sosSentRef.current = false; // Reset SOS sent flag when starting new hold
-    
-    // Stop any existing animations first
-    shouldAnimate1.current = false;
-    shouldAnimate2.current = false;
-    pulseAnim1.stopAnimation();
-    pulseAnim2.stopAnimation();
-    pulseAnim1.setValue(1);
-    pulseAnim2.setValue(1);
-    
-    // Start new animations
-    shouldAnimate1.current = true;
-    shouldAnimate2.current = true;
-    
-    // Start pulsating animations for both rings - only expand outward, then reset instantly
-    const createPulseAnimation = (animValue: Animated.Value, delay: number, shouldAnimateRef: React.MutableRefObject<boolean>) => {
-      let isFirstLoop = true;
-      const expand = () => {
-        // Check if we should continue animating
-        if (!shouldAnimateRef.current) {
-          return;
-        }
-        
-        const animation = isFirstLoop
-          ? Animated.sequence([
-              Animated.delay(delay),
-              Animated.timing(animValue, {
-                toValue: 1.8, // Expand outward
-                duration: 1000,
-                useNativeDriver: true,
-              }),
-            ])
-          : Animated.timing(animValue, {
-              toValue: 1.8, // Expand outward
-              duration: 1000,
-              useNativeDriver: true,
-            });
-        
-        isFirstLoop = false;
-        
-        animation.start((finished) => {
-          // Only continue if animation finished and we should still animate
-          if (finished && shouldAnimateRef.current) {
-            // Instantly reset to 1 (not animated) and loop again
-            animValue.setValue(1);
-            expand();
-          }
-        });
-      };
-      expand();
-    };
-
-    createPulseAnimation(pulseAnim1, 0, shouldAnimate1);
-    createPulseAnimation(pulseAnim2, 500, shouldAnimate2);
+    setSOSHolding(true);
+    startPulse();
   };
 
   const handleSOSPressOut = () => {
     // Don't cancel if SOS was already sent
-    if (sosSentRef.current) {
+    if (sosSentRef.current || sosSent) {
       return;
     }
     
-    // Stop animations
-    shouldAnimate1.current = false;
-    shouldAnimate2.current = false;
-    pulseAnim1.stopAnimation();
-    pulseAnim2.stopAnimation();
-    pulseAnim1.setValue(1);
-    pulseAnim2.setValue(1);
+    stopPulse();
     
     // If user was holding, send SOS when they release
     if (isHoldingSOS) {
       sendSOS();
     }
     
-    setIsHoldingSOS(false);
+    setSOSHolding(false);
   };
 
   const sendSOS = () => {
     // Prevent multiple calls
-    if (sosSentRef.current) {
+    if (sosSentRef.current || sosSent) {
       return;
     }
     
-    // Mark SOS as sent to prevent cancellation
-    sosSentRef.current = true;
-    
-    // Stop animations
-    shouldAnimate1.current = false;
-    shouldAnimate2.current = false;
-    pulseAnim1.stopAnimation();
-    pulseAnim2.stopAnimation();
-    pulseAnim1.setValue(1);
-    pulseAnim2.setValue(1);
+    // Mark SOS as sent in both animation hook and reducer
+    markSOSSent();
+    setSOSSent(true);
     
     // TODO: Implement actual SOS sending logic
     console.log('SOS sent!');
     // Don't exit SOS mode - user must click SOS button again to exit
-    setIsHoldingSOS(false);
+    setSOSHolding(false);
   };
 
-
-  // Trigger animation when notification becomes visible
-  useEffect(() => {
-    if (showHomeNotification) {
-      console.log('Notification should be visible, starting animation');
-      // Reset and animate in
-      homeNotificationAnim.setValue(0);
-      requestAnimationFrame(() => {
-        Animated.spring(homeNotificationAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 50,
-          friction: 8,
-        }).start();
-      });
-    } else {
-      // Reset animation when hidden
-      homeNotificationAnim.setValue(0);
-    }
-  }, [showHomeNotification]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -729,16 +527,21 @@ export const HomeScreen: React.FC = () => {
       pulseAnim1.stopAnimation();
       pulseAnim2.stopAnimation();
     };
-  }, []);
+  }, [pulseAnim1, pulseAnim2]);
+  
+  const handleAddFriend = () => {
+    console.log('Add friend pressed');
+    // TODO: Implement add friend functionality
+  };
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'LOCATION': return <LocationTab showHomeNotification={showHomeNotification} homeNotificationAnim={homeNotificationAnim} onDismissNotification={handleDismissNotification} />;
-      case 'FRIENDS': return <PlaceholderTab name="Friends" />;
+      case 'LOCATION': return <LocationTab showHomeNotification={homeNotificationVisible} homeNotificationAnim={homeNotificationAnim} onDismissNotification={handleDismissNotification} />;
+      case 'FRIENDS': return <FriendsTab friends={mockFriends} isBluetoothConnected={isBluetoothConnected} />;
       case 'ACTIVITY': return <PlaceholderTab name="Activity" />;
       case 'DEVICE': return <PlaceholderTab name="Device" />;
       case 'PROFILE': return <ProfileTab />;
-      default: return <LocationTab showHomeNotification={showHomeNotification} homeNotificationAnim={homeNotificationAnim} onDismissNotification={handleDismissNotification} />;
+      default: return <LocationTab showHomeNotification={homeNotificationVisible} homeNotificationAnim={homeNotificationAnim} onDismissNotification={handleDismissNotification} />;
     }
   };
 
@@ -757,208 +560,77 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.bottomSheetContent}>
              <View style={styles.bottomSheetHandle} />
              
-             {/* Quick Actions - Always visible */}
+             {/* Quick Actions - Hidden when Friends tab is active */}
+             {activeTab !== 'FRIENDS' && (
              <View style={styles.quickActionsRow}>
-                {ACTION_BUTTONS.map(action => (
-                  <TouchableOpacity
-                    key={action.key}
-                    style={[styles.quickActionButton, { backgroundColor: 'rgba(255, 255, 255, 0.6)' }]}
-                    onPress={() => {
-                      if (action.key === 'SOS') {
-                        handleSOSPress();
-                      } else if (action.key === 'LOCATION') {
-                        handleLocationPress();
-                      } else if (action.key === 'HOME') {
-                        handleHomePress();
-                      } else if (action.key === 'MESSAGE') {
-                        handleMessagePress();
-                      } else {
-                        console.log(`Pressed ${action.key}`);
-                      }
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    {action.isText ? (
-                      <Text style={[styles.sosText, isSOSMode && { color: '#007BFE' }]}>SOS</Text>
-                    ) : (
-                      <View style={styles.quickActionIconContainer}>
-                        {action.iconName && (
-                          <MaterialCommunityIcons 
-                            name={action.iconName as any}
-                            size={24} 
-                            color={
-                              (isMessageMode && action.key === 'MESSAGE') || 
-                              (isLocationMode && action.key === 'LOCATION') ||
-                              (showHomeNotification && action.key === 'HOME')
-                                ? '#007BFE' 
-                                : action.color
-                            }
-                          />
-                        )}
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
+                {ACTION_BUTTONS.map(action => {
+                  const isActive =
+                    (action.key === 'SOS' && isSOSMode) ||
+                    (action.key === 'LOCATION' && isLocationMode) ||
+                    (action.key === 'MESSAGE' && isMessageMode) ||
+                    (action.key === 'HOME' && homeNotificationVisible);
+
+                  const handlePress = () => {
+                    if (action.key === 'SOS') {
+                      handleSOSPress();
+                    } else if (action.key === 'LOCATION') {
+                      handleLocationPress();
+                    } else if (action.key === 'HOME') {
+                      handleHomePress();
+                    } else if (action.key === 'MESSAGE') {
+                      handleMessagePress();
+                    } else {
+                      console.log(`Pressed ${action.key}`);
+                    }
+                  };
+
+                  return (
+                    <QuickActionButton
+                      key={action.key}
+                      action={action}
+                      isActive={isActive}
+                      onPress={handlePress}
+                    />
+                  );
+                })}
               </View>
+             )}
+
+             {/* Friends List Panel - Shown when Friends tab is active */}
+             {activeTab === 'FRIENDS' && (
+               <FriendsListPanel
+                 friends={friendsWithDistance}
+                 onAddFriend={handleAddFriend}
+               />
+             )}
 
              {/* SOS Hold Button - Shown when in SOS mode, above separator */}
              {isSOSMode && (
-               <View style={styles.sosButtonContainer}>
-                 <Animated.View style={[styles.sosPulseRing, { transform: [{ scale: pulseAnim1 }], opacity: pulseAnim1.interpolate({ inputRange: [1, 1.8], outputRange: [0.3, 0] }) }]} />
-                 <Animated.View style={[styles.sosPulseRing, { transform: [{ scale: pulseAnim2 }], opacity: pulseAnim2.interpolate({ inputRange: [1, 1.8], outputRange: [0.3, 0] }) }]} />
-                 <TouchableOpacity
-                   style={styles.sosLargeButton}
-                   onPressIn={handleSOSPressIn}
-                   onPressOut={handleSOSPressOut}
-                   activeOpacity={0.9}
-                   delayPressIn={0}
-                   delayPressOut={0}
-                   delayLongPress={5000}
-                 >
-                   <Text style={styles.sosLargeButtonText}>Tap and hold to send SOS</Text>
-                 </TouchableOpacity>
-               </View>
+               <SOSModePanel
+                 pulseAnim1={pulseAnim1}
+                 pulseAnim2={pulseAnim2}
+                 onPressIn={handleSOSPressIn}
+                 onPressOut={handleSOSPressOut}
+               />
              )}
 
              {/* Location Settings - Shown when location mode is active, above separator */}
              {isLocationMode && (
-               <View style={styles.locationSettingsContainer}>
-                 <View style={styles.locationSettingsHeader}>
-                   <Text style={styles.locationSettingsTitle}>My location</Text>
-                 </View>
-                 
-                 {/* Share My Location Toggle */}
-                 <View style={styles.locationSettingRow}>
-                   <Text style={[styles.locationSettingLabel, styles.locationSettingLabelSingle]}>Share my location</Text>
-                   <TouchableOpacity
-                     style={[styles.toggleSwitch, shareMyLocation && styles.toggleSwitchActive]}
-                     onPress={handleToggleShareMyLocation}
-                     activeOpacity={0.7}
-                   >
-                     <Animated.View
-                       style={[
-                         styles.toggleThumb,
-                         {
-                           transform: [
-                             {
-                               translateX: toggleAnim1.interpolate({
-                                 inputRange: [0, 1],
-                                 outputRange: [0, 20],
-                               }),
-                             },
-                           ],
-                         },
-                       ]}
-                     />
-                   </TouchableOpacity>
-                 </View>
-
-                 {/* Share with Everyone Toggle */}
-                 <View style={styles.locationSettingRow}>
-                   <View style={styles.locationSettingTextContainer}>
-                     <Text style={styles.locationSettingLabel}>Share with everyone on eva</Text>
-                     <Text style={styles.locationSettingSubtitle}>Send Also SOS alert with everyone</Text>
-                   </View>
-                   <TouchableOpacity
-                     style={[styles.toggleSwitch, shareWithEveryone && styles.toggleSwitchActive]}
-                     onPress={handleToggleShareWithEveryone}
-                     activeOpacity={0.7}
-                   >
-                     <Animated.View
-                       style={[
-                         styles.toggleThumb,
-                         {
-                           transform: [
-                             {
-                               translateX: toggleAnim2.interpolate({
-                                 inputRange: [0, 1],
-                                 outputRange: [0, 20],
-                               }),
-                             },
-                           ],
-                         },
-                       ]}
-                     />
-                   </TouchableOpacity>
-                 </View>
-               </View>
+               <LocationModePanel
+                 shareMyLocation={shareMyLocation}
+                 shareWithEveryone={shareWithEveryone}
+                 onToggleShareMyLocation={handleToggleShareMyLocation}
+                 onToggleShareWithEveryone={handleToggleShareWithEveryone}
+               />
              )}
 
              {/* Message Settings - Shown when message mode is active, above separator */}
              {isMessageMode && (
-               <View style={styles.homeSettingsContainer}>
-                 <View style={styles.homeSettingsHeader}>
-                   <Text style={styles.homeSettingsTitle}>Message</Text>
-                 </View>
-                 
-                 {/* Arrived Home */}
-                 <View style={styles.homeSettingRow}>
-                   <View style={styles.homeIconContainer}>
-                     <MaterialCommunityIcons name="home-variant" size={20} color="#000000" />
-                   </View>
-                   <Text style={styles.homeSettingLabel}>Arrived Home</Text>
-                   <TouchableOpacity
-                     style={styles.sendButton}
-                     onPress={() => handleSendHomeStatus('arrived')}
-                     activeOpacity={0.7}
-                   >
-                     <View style={styles.sendIconContainer}>
-                       <MaterialCommunityIcons name="send" size={16} color="#FFFFFF" />
-                     </View>
-                   </TouchableOpacity>
-                 </View>
-
-                 {/* Walking Home */}
-                 <View style={styles.homeSettingRow}>
-                   <MaterialCommunityIcons name="walk" size={20} color="#000000" />
-                   <Text style={styles.homeSettingLabel}>Walking Home</Text>
-                   <TouchableOpacity
-                     style={styles.sendButton}
-                     onPress={() => handleSendHomeStatus('walking')}
-                     activeOpacity={0.7}
-                   >
-                     <View style={styles.sendIconContainer}>
-                       <MaterialCommunityIcons name="send" size={16} color="#FFFFFF" />
-                     </View>
-                   </TouchableOpacity>
-                 </View>
-
-                 {/* Biking Away */}
-                 <View style={styles.homeSettingRow}>
-                   <MaterialCommunityIcons name="bike" size={20} color="#000000" />
-                   <Text style={styles.homeSettingLabel}>Biking Away</Text>
-                   <TouchableOpacity
-                     style={styles.sendButton}
-                     onPress={() => handleSendHomeStatus('biking')}
-                     activeOpacity={0.7}
-                   >
-                     <View style={styles.sendIconContainer}>
-                       <MaterialCommunityIcons name="send" size={16} color="#FFFFFF" />
-                     </View>
-                   </TouchableOpacity>
-                 </View>
-
-                 {/* On My Way */}
-                 <View style={styles.homeSettingRow}>
-                   <View style={styles.locationIconContainer}>
-                     <MaterialCommunityIcons name="map-marker" size={20} color="#000000" />
-                   </View>
-                   <Text style={styles.homeSettingLabel}>On My Way</Text>
-                   <TouchableOpacity
-                     style={styles.sendButton}
-                     onPress={() => handleSendHomeStatus('onMyWay')}
-                     activeOpacity={0.7}
-                   >
-                     <View style={styles.sendIconContainer}>
-                       <MaterialCommunityIcons name="send" size={16} color="#FFFFFF" />
-                     </View>
-                   </TouchableOpacity>
-                 </View>
-               </View>
+               <MessageModePanel onSendHomeStatus={handleSendHomeStatus} />
              )}
 
-             {/* Separator Line */}
-             <View style={styles.separator} />
+             {/* Separator Line - Only show when not in Friends tab */}
+             {activeTab !== 'FRIENDS' && <View style={styles.separator} />}
 
         {/* Bottom Navigation */}
         <BottomNavBar
