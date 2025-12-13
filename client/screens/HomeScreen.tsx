@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, Modal, Platform } from 'react-native';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, Modal, Platform, Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -14,7 +14,7 @@ import {
   addNotificationListeners,
   getSubscriptionStatus
 } from '../services/notificationService';
-import { MapPin, Home, Mail, ChevronDown, Bluetooth } from 'lucide-react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as LocationService from '../services/locationService';
 import { Alert } from 'react-native';
 
@@ -22,11 +22,11 @@ const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
 
 const TABS: BottomTab[] = [
-  { key: 'LOCATION', label: 'Location', icon: 'home', iconFilled: 'home' },
-  { key: 'FRIENDS', label: 'Friends', icon: 'people-outline', iconFilled: 'people' },
-  { key: 'ACTIVITY', label: 'Activity', icon: 'notifications-outline', iconFilled: 'notifications' },
-  { key: 'DEVICE', label: 'Device', icon: 'bluetooth-outline', iconFilled: 'bluetooth' },
-  { key: 'PROFILE', label: 'Profile', icon: 'person-outline', iconFilled: 'person' },
+  { key: 'LOCATION', label: 'Location', icon: 'home-variant', iconFilled: 'home-variant' },
+  { key: 'FRIENDS', label: 'Friends', icon: 'account-multiple', iconFilled: 'account-multiple' },
+  { key: 'ACTIVITY', label: 'Activity', icon: 'bell', iconFilled: 'bell' },
+  { key: 'DEVICE', label: 'Device', icon: 'bluetooth', iconFilled: 'bluetooth' },
+  { key: 'PROFILE', label: 'Profile', icon: 'account', iconFilled: 'account' },
 ];
 
 const PlaceholderTab: React.FC<{ name: string }> = ({ name }) => (
@@ -44,10 +44,10 @@ const friendMarkers: Array<{ id: string; coordinate: LatLng; name: string; statu
 ];
 
 const ACTION_BUTTONS = [
-  { key: 'SOS', label: 'SOS', icon: null, color: '#000000', background: '#F1F8E9', isText: true },
-  { key: 'LOCATION', label: 'Share Location', icon: MapPin, color: '#000000', background: '#F1F8E9' },
-  { key: 'HOME', label: "I'm Home", icon: Home, color: '#000000', background: '#F1F8E9' },
-  { key: 'MESSAGE', label: 'Message', icon: Mail, color: '#000000', background: '#F1F8E9' },
+  { key: 'SOS', label: 'SOS', iconName: null, color: '#000000', background: '#F1F8E9', isText: true },
+  { key: 'LOCATION', label: 'Share Location', iconName: 'map-marker', iconNameActive: 'map-marker', color: '#000000', background: '#F1F8E9' },
+  { key: 'HOME', label: "I'm Home", iconName: 'home-variant', iconNameActive: 'home-variant', color: '#000000', background: '#F1F8E9' },
+  { key: 'MESSAGE', label: 'Message', iconName: 'email', iconNameActive: 'email', color: '#000000', background: '#F1F8E9' },
 ];
 
 const LocationTab: React.FC = () => {
@@ -57,7 +57,7 @@ const LocationTab: React.FC = () => {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   // Location state
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
@@ -271,16 +271,16 @@ const LocationTab: React.FC = () => {
                 <Text style={styles.statusTextOnline}> online</Text>
               </Text>
               <TouchableOpacity style={styles.dropdownButton} onPress={() => console.log('Dropdown pressed')}>
-                <ChevronDown size={16} color="#000000" />
+                <MaterialCommunityIcons name="chevron-down" size={16} color="#000000" />
               </TouchableOpacity>
             </BlurView>
             
             {/* Bluetooth Status Icon - Positioned absolutely on the right */}
             <BlurView intensity={80} tint="light" style={styles.bluetoothContainer}>
-              <Bluetooth 
+              <MaterialCommunityIcons 
+                name="bluetooth" 
                 size={20} 
                 color={isBluetoothConnected ? '#34D399' : '#EF4444'} 
-                strokeWidth={2.5}
               />
             </BlurView>
           </View>
@@ -313,7 +313,7 @@ const LocationTab: React.FC = () => {
               >
                 <Text style={styles.modalButtonTextConfirm}>Retry</Text>
               </TouchableOpacity>
-            </View>
+      </View>
             <TouchableOpacity 
               style={styles.modalButtonSecondary} 
               onPress={handleOpenSettings}
@@ -389,7 +389,254 @@ const ProfileTab: React.FC = () => {
 
 export const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState('LOCATION');
+  const [isSOSMode, setIsSOSMode] = useState(false);
+  const [isHoldingSOS, setIsHoldingSOS] = useState(false);
+  const [isLocationMode, setIsLocationMode] = useState(false);
+  const [isHomeMode, setIsHomeMode] = useState(false);
+  const [shareMyLocation, setShareMyLocation] = useState(true);
+  const [shareWithEveryone, setShareWithEveryone] = useState(true);
   const insets = useSafeAreaInsets();
+  const toggleAnim1 = useRef(new Animated.Value(1)).current;
+  const toggleAnim2 = useRef(new Animated.Value(1)).current;
+  const pulseAnim1 = useRef(new Animated.Value(1)).current;
+  const pulseAnim2 = useRef(new Animated.Value(1)).current;
+  const sosSentRef = useRef(false);
+  const shouldAnimate1 = useRef(false);
+  const shouldAnimate2 = useRef(false);
+
+  // Location button handler
+  const handleLocationPress = () => {
+    // Toggle Location mode - if already in Location mode, exit it
+    if (isLocationMode) {
+      setIsLocationMode(false);
+    } else {
+      // Deactivate SOS mode if it's active
+      if (isSOSMode) {
+        setIsSOSMode(false);
+        setIsHoldingSOS(false);
+        sosSentRef.current = false;
+        // Stop animations and prevent them from continuing
+        shouldAnimate1.current = false;
+        shouldAnimate2.current = false;
+        pulseAnim1.stopAnimation();
+        pulseAnim2.stopAnimation();
+        pulseAnim1.setValue(1);
+        pulseAnim2.setValue(1);
+      }
+      // Deactivate Home mode if it's active
+      if (isHomeMode) {
+        setIsHomeMode(false);
+      }
+      setIsLocationMode(true);
+    }
+  };
+
+  // Home button handler
+  const handleHomePress = () => {
+    // Toggle Home mode - if already in Home mode, exit it
+    if (isHomeMode) {
+      setIsHomeMode(false);
+    } else {
+      // Deactivate SOS mode if it's active
+      if (isSOSMode) {
+        setIsSOSMode(false);
+        setIsHoldingSOS(false);
+        sosSentRef.current = false;
+        // Stop animations and prevent them from continuing
+        shouldAnimate1.current = false;
+        shouldAnimate2.current = false;
+        pulseAnim1.stopAnimation();
+        pulseAnim2.stopAnimation();
+        pulseAnim1.setValue(1);
+        pulseAnim2.setValue(1);
+      }
+      // Deactivate Location mode if it's active
+      if (isLocationMode) {
+        setIsLocationMode(false);
+      }
+      setIsHomeMode(true);
+    }
+  };
+
+  // Handle sending home status messages
+  const handleSendHomeStatus = (statusType: string) => {
+    console.log(`Sending home status: ${statusType}`);
+    // TODO: Implement actual message sending logic
+  };
+
+  // Toggle handlers with animation
+  const handleToggleShareMyLocation = () => {
+    const newValue = !shareMyLocation;
+    setShareMyLocation(newValue);
+    Animated.spring(toggleAnim1, {
+      toValue: newValue ? 1 : 0,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  };
+
+  const handleToggleShareWithEveryone = () => {
+    const newValue = !shareWithEveryone;
+    setShareWithEveryone(newValue);
+    Animated.spring(toggleAnim2, {
+      toValue: newValue ? 1 : 0,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  };
+
+  // Initialize toggle animations
+  useEffect(() => {
+    toggleAnim1.setValue(shareMyLocation ? 1 : 0);
+    toggleAnim2.setValue(shareWithEveryone ? 1 : 0);
+  }, []);
+
+  // SOS button handlers
+  const handleSOSPress = () => {
+    // Toggle SOS mode - if already in SOS mode, exit it
+    if (isSOSMode) {
+      setIsSOSMode(false);
+      setIsHoldingSOS(false);
+      sosSentRef.current = false;
+      // Stop animations and prevent them from continuing
+      shouldAnimate1.current = false;
+      shouldAnimate2.current = false;
+      pulseAnim1.stopAnimation();
+      pulseAnim2.stopAnimation();
+      pulseAnim1.setValue(1);
+      pulseAnim2.setValue(1);
+    } else {
+      // Deactivate Location mode if it's active
+      if (isLocationMode) {
+        setIsLocationMode(false);
+      }
+      // Deactivate Home mode if it's active
+      if (isHomeMode) {
+        setIsHomeMode(false);
+      }
+      setIsSOSMode(true);
+      sosSentRef.current = false;
+      // Reset animation flags
+      shouldAnimate1.current = false;
+      shouldAnimate2.current = false;
+      pulseAnim1.setValue(1);
+      pulseAnim2.setValue(1);
+    }
+  };
+
+  const handleSOSPressIn = () => {
+    setIsHoldingSOS(true);
+    sosSentRef.current = false; // Reset SOS sent flag when starting new hold
+    
+    // Stop any existing animations first
+    shouldAnimate1.current = false;
+    shouldAnimate2.current = false;
+    pulseAnim1.stopAnimation();
+    pulseAnim2.stopAnimation();
+    pulseAnim1.setValue(1);
+    pulseAnim2.setValue(1);
+    
+    // Start new animations
+    shouldAnimate1.current = true;
+    shouldAnimate2.current = true;
+    
+    // Start pulsating animations for both rings - only expand outward, then reset instantly
+    const createPulseAnimation = (animValue: Animated.Value, delay: number, shouldAnimateRef: React.MutableRefObject<boolean>) => {
+      let isFirstLoop = true;
+      const expand = () => {
+        // Check if we should continue animating
+        if (!shouldAnimateRef.current) {
+          return;
+        }
+        
+        const animation = isFirstLoop
+          ? Animated.sequence([
+              Animated.delay(delay),
+              Animated.timing(animValue, {
+                toValue: 1.8, // Expand outward
+                duration: 1000,
+                useNativeDriver: true,
+              }),
+            ])
+          : Animated.timing(animValue, {
+              toValue: 1.8, // Expand outward
+              duration: 1000,
+              useNativeDriver: true,
+            });
+        
+        isFirstLoop = false;
+        
+        animation.start((finished) => {
+          // Only continue if animation finished and we should still animate
+          if (finished && shouldAnimateRef.current) {
+            // Instantly reset to 1 (not animated) and loop again
+            animValue.setValue(1);
+            expand();
+          }
+        });
+      };
+      expand();
+    };
+
+    createPulseAnimation(pulseAnim1, 0, shouldAnimate1);
+    createPulseAnimation(pulseAnim2, 500, shouldAnimate2);
+  };
+
+  const handleSOSPressOut = () => {
+    // Don't cancel if SOS was already sent
+    if (sosSentRef.current) {
+      return;
+    }
+    
+    // Stop animations
+    shouldAnimate1.current = false;
+    shouldAnimate2.current = false;
+    pulseAnim1.stopAnimation();
+    pulseAnim2.stopAnimation();
+    pulseAnim1.setValue(1);
+    pulseAnim2.setValue(1);
+    
+    // If user was holding, send SOS when they release
+    if (isHoldingSOS) {
+      sendSOS();
+    }
+    
+    setIsHoldingSOS(false);
+  };
+
+  const sendSOS = () => {
+    // Prevent multiple calls
+    if (sosSentRef.current) {
+      return;
+    }
+    
+    // Mark SOS as sent to prevent cancellation
+    sosSentRef.current = true;
+    
+    // Stop animations
+    shouldAnimate1.current = false;
+    shouldAnimate2.current = false;
+    pulseAnim1.stopAnimation();
+    pulseAnim2.stopAnimation();
+    pulseAnim1.setValue(1);
+    pulseAnim2.setValue(1);
+    
+    // TODO: Implement actual SOS sending logic
+    console.log('SOS sent!');
+    // Don't exit SOS mode - user must click SOS button again to exit
+    setIsHoldingSOS(false);
+  };
+
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      pulseAnim1.stopAnimation();
+      pulseAnim2.stopAnimation();
+    };
+  }, []);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -417,38 +664,211 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.bottomSheetContent}>
              <View style={styles.bottomSheetHandle} />
              
-             {/* Quick Actions */}
+             {/* Quick Actions - Always visible */}
              <View style={styles.quickActionsRow}>
                 {ACTION_BUTTONS.map(action => (
                   <TouchableOpacity
                     key={action.key}
                     style={[styles.quickActionButton, { backgroundColor: 'rgba(255, 255, 255, 0.6)' }]}
-                    onPress={() => console.log(`Pressed ${action.key}`)}
+                    onPress={() => {
+                      if (action.key === 'SOS') {
+                        handleSOSPress();
+                      } else if (action.key === 'LOCATION') {
+                        handleLocationPress();
+                      } else if (action.key === 'HOME') {
+                        handleHomePress();
+                      } else {
+                        console.log(`Pressed ${action.key}`);
+                      }
+                    }}
                     activeOpacity={0.8}
                   >
                     {action.isText ? (
-                      <Text style={styles.sosText}>SOS</Text>
+                      <Text style={[styles.sosText, isSOSMode && { color: '#007BFE' }]}>SOS</Text>
                     ) : (
-                       action.icon && <action.icon 
-                         size={24} 
-                         color={action.color} 
-                         fill="none"
-                         strokeWidth={2}
-                       />
+                      <View style={styles.quickActionIconContainer}>
+                        {action.iconName && (
+                          <MaterialCommunityIcons 
+                            name={action.iconName as any}
+                            size={24} 
+                            color={
+                              (isHomeMode && action.key === 'HOME') || (isLocationMode && action.key === 'LOCATION')
+                                ? '#007BFE' 
+                                : action.color
+                            }
+                          />
+                        )}
+                      </View>
                     )}
                   </TouchableOpacity>
                 ))}
-             </View>
+              </View>
+
+             {/* SOS Hold Button - Shown when in SOS mode, above separator */}
+             {isSOSMode && (
+               <View style={styles.sosButtonContainer}>
+                 <Animated.View style={[styles.sosPulseRing, { transform: [{ scale: pulseAnim1 }], opacity: pulseAnim1.interpolate({ inputRange: [1, 1.8], outputRange: [0.3, 0] }) }]} />
+                 <Animated.View style={[styles.sosPulseRing, { transform: [{ scale: pulseAnim2 }], opacity: pulseAnim2.interpolate({ inputRange: [1, 1.8], outputRange: [0.3, 0] }) }]} />
+                 <TouchableOpacity
+                   style={styles.sosLargeButton}
+                   onPressIn={handleSOSPressIn}
+                   onPressOut={handleSOSPressOut}
+                   activeOpacity={0.9}
+                   delayPressIn={0}
+                   delayPressOut={0}
+                   delayLongPress={5000}
+                 >
+                   <Text style={styles.sosLargeButtonText}>Tap and hold to send SOS</Text>
+                 </TouchableOpacity>
+               </View>
+             )}
+
+             {/* Location Settings - Shown when location mode is active, above separator */}
+             {isLocationMode && (
+               <View style={styles.locationSettingsContainer}>
+                 <View style={styles.locationSettingsHeader}>
+                   <Text style={styles.locationSettingsTitle}>My location</Text>
+                 </View>
+                 
+                 {/* Share My Location Toggle */}
+                 <View style={styles.locationSettingRow}>
+                   <Text style={[styles.locationSettingLabel, styles.locationSettingLabelSingle]}>Share my location</Text>
+                   <TouchableOpacity
+                     style={[styles.toggleSwitch, shareMyLocation && styles.toggleSwitchActive]}
+                     onPress={handleToggleShareMyLocation}
+                     activeOpacity={0.7}
+                   >
+                     <Animated.View
+                       style={[
+                         styles.toggleThumb,
+                         {
+                           transform: [
+                             {
+                               translateX: toggleAnim1.interpolate({
+                                 inputRange: [0, 1],
+                                 outputRange: [0, 20],
+                               }),
+                             },
+                           ],
+                         },
+                       ]}
+                     />
+                   </TouchableOpacity>
+                 </View>
+
+                 {/* Share with Everyone Toggle */}
+                 <View style={styles.locationSettingRow}>
+                   <View style={styles.locationSettingTextContainer}>
+                     <Text style={styles.locationSettingLabel}>Share with everyone on eva</Text>
+                     <Text style={styles.locationSettingSubtitle}>Send Also SOS alert with everyone</Text>
+                   </View>
+                   <TouchableOpacity
+                     style={[styles.toggleSwitch, shareWithEveryone && styles.toggleSwitchActive]}
+                     onPress={handleToggleShareWithEveryone}
+                     activeOpacity={0.7}
+                   >
+                     <Animated.View
+                       style={[
+                         styles.toggleThumb,
+                         {
+                           transform: [
+                             {
+                               translateX: toggleAnim2.interpolate({
+                                 inputRange: [0, 1],
+                                 outputRange: [0, 20],
+                               }),
+                             },
+                           ],
+                         },
+                       ]}
+                     />
+                   </TouchableOpacity>
+                 </View>
+               </View>
+             )}
+
+             {/* Home Settings - Shown when home mode is active, above separator */}
+             {isHomeMode && (
+               <View style={styles.homeSettingsContainer}>
+                 <View style={styles.homeSettingsHeader}>
+                   <Text style={styles.homeSettingsTitle}>Message</Text>
+                 </View>
+                 
+                 {/* Arrived Home */}
+                 <View style={styles.homeSettingRow}>
+                   <View style={styles.homeIconContainer}>
+                     <MaterialCommunityIcons name="home-variant" size={20} color="#000000" />
+                   </View>
+                   <Text style={styles.homeSettingLabel}>Arrived Home</Text>
+                   <TouchableOpacity
+                     style={styles.sendButton}
+                     onPress={() => handleSendHomeStatus('arrived')}
+                     activeOpacity={0.7}
+                   >
+                     <View style={styles.sendIconContainer}>
+                       <MaterialCommunityIcons name="send" size={16} color="#FFFFFF" />
+                     </View>
+                   </TouchableOpacity>
+                 </View>
+
+                 {/* Walking Home */}
+                 <View style={styles.homeSettingRow}>
+                   <MaterialCommunityIcons name="walk" size={20} color="#000000" />
+                   <Text style={styles.homeSettingLabel}>Walking Home</Text>
+                   <TouchableOpacity
+                     style={styles.sendButton}
+                     onPress={() => handleSendHomeStatus('walking')}
+                     activeOpacity={0.7}
+                   >
+                     <View style={styles.sendIconContainer}>
+                       <MaterialCommunityIcons name="send" size={16} color="#FFFFFF" />
+                     </View>
+                   </TouchableOpacity>
+                 </View>
+
+                 {/* Biking Away */}
+                 <View style={styles.homeSettingRow}>
+                   <MaterialCommunityIcons name="bike" size={20} color="#000000" />
+                   <Text style={styles.homeSettingLabel}>Biking Away</Text>
+                   <TouchableOpacity
+                     style={styles.sendButton}
+                     onPress={() => handleSendHomeStatus('biking')}
+                     activeOpacity={0.7}
+                   >
+                     <View style={styles.sendIconContainer}>
+                       <MaterialCommunityIcons name="send" size={16} color="#FFFFFF" />
+                     </View>
+                   </TouchableOpacity>
+                 </View>
+
+                 {/* On My Way */}
+                 <View style={styles.homeSettingRow}>
+                   <View style={styles.locationIconContainer}>
+                     <MaterialCommunityIcons name="map-marker" size={20} color="#000000" />
+                   </View>
+                   <Text style={styles.homeSettingLabel}>On My Way</Text>
+                   <TouchableOpacity
+                     style={styles.sendButton}
+                     onPress={() => handleSendHomeStatus('onMyWay')}
+                     activeOpacity={0.7}
+                   >
+                     <View style={styles.sendIconContainer}>
+                       <MaterialCommunityIcons name="send" size={16} color="#FFFFFF" />
+                     </View>
+                   </TouchableOpacity>
+                 </View>
+               </View>
+             )}
 
              {/* Separator Line */}
              <View style={styles.separator} />
 
-            {/* Bottom Navigation */}
-            <BottomNavBar
-              tabs={TABS}
-              activeKey={activeTab}
-              onTabPress={setActiveTab}
-            />
+        {/* Bottom Navigation */}
+        <BottomNavBar
+          tabs={TABS}
+          activeKey={activeTab}
+          onTabPress={setActiveTab}
+        />
             </View>
           </BlurView>
         </View>
@@ -822,5 +1242,180 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  sosButtonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 48,
+    marginTop: 32,
+    position: 'relative',
+  },
+  sosPulseRing: {
+    position: 'absolute',
+    width: 250, // Increased from 200 to make rings larger
+    height: 250, // Increased from 200 to make rings larger
+    borderRadius: 125, // Increased from 100 to match new size
+    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+    borderWidth: 2,
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+  },
+  sosLargeButton: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+    zIndex: 10,
+  },
+  sosLargeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    letterSpacing: 0.5,
+  },
+  locationSettingsContainer: {
+    marginTop: 14,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  locationSettingsHeader: {
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  locationSettingsTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  locationSettingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    minHeight: 56,
+  },
+  locationSettingTextContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  locationSettingLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#000000',
+  },
+  locationSettingLabelSingle: {
+    marginBottom: 0,
+  },
+  locationSettingSubtitle: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  toggleSwitch: {
+    width: 51,
+    height: 31,
+    borderRadius: 15.5,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    padding: 2,
+  },
+  toggleSwitchActive: {
+    backgroundColor: '#34C759',
+  },
+  toggleThumb: {
+    width: 27,
+    height: 27,
+    borderRadius: 13.5,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  homeSettingsContainer: {
+    marginTop: 14,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  homeSettingsHeader: {
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  homeSettingsTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  homeSettingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    minHeight: 56,
+  },
+  homeSettingLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#000000',
+    marginLeft: 12,
+  },
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sendIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+    height: 16,
+    marginRight: 0,
+    marginLeft: 2, 
+  },
+  homeIconContainer: {
+    position: 'relative',
+    width: 20,
+    height: 20,
+  },
+  locationIconContainer: {
+    position: 'relative',
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionIconContainer: {
+    position: 'relative',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

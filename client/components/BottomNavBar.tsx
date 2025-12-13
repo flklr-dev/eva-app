@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export type BottomTab = {
   key: string;
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  iconFilled: keyof typeof Ionicons.glyphMap;
+  icon: string;
+  iconFilled: string;
 };
 
 interface BottomNavBarProps {
@@ -32,10 +32,10 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             onPress={() => onTabPress(tab.key)}
             activeOpacity={0.85}
           >
-            <Ionicons
-              name={iconName}
-              size={22}
-              color={isActive ? '#007AFF' : '#111827'}
+            <MaterialCommunityIcons
+              name={iconName as any}
+              size={24}
+              color={isActive ? '#007AFF' : '#000000'}
             />
             <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
               {tab.label}
