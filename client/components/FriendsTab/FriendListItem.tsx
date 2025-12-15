@@ -77,7 +77,7 @@ export const FriendListItem: React.FC<FriendListItemProps> = ({
 const styles = StyleSheet.create({
   friendRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 12,
     paddingHorizontal: 0,
     minHeight: 64,
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   friendCountry: {
     fontSize: 14,

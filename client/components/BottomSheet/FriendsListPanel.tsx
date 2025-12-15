@@ -106,7 +106,7 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginTop: 4,
-    marginBottom: 6,
+    marginBottom: 12,
     paddingHorizontal: SPACING.MD,
   },
   header: {
