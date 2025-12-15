@@ -24,7 +24,7 @@ import { useHomeNotification } from '../hooks/useHomeNotification';
 import { useQuickActionMode } from '../hooks/useQuickActionMode';
 import type { QuickActionKey, HomeStatus } from '../types/quickActions';
 import { QuickActionButton } from '../components/QuickActions';
-import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel } from '../components/BottomSheet';
+import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, ActivityListPanel } from '../components/BottomSheet';
 import {
   StatusChip,
   BluetoothIndicator,
@@ -33,7 +33,9 @@ import {
   NotificationCancelModal,
 } from '../components/LocationTab';
 import { FriendsTab, FriendsTabRef } from '../components/FriendsTab';
+import { ActivityTab } from '../components/ActivityTab';
 import { Friend, FriendWithDistance } from '../types/friends';
+import { Activity } from '../types/activity';
 import { calculateDistance } from '../utils/distanceCalculator';
 
 const backgroundImage = require('../assets/background.png');
@@ -61,6 +63,46 @@ const mockFriends: Friend[] = [
   { id: 'friend-2', name: 'Lucas', country: 'Philippines', coordinate: { latitude: 6.948, longitude: 126.218 }, status: 'online' },
   { id: 'friend-3', name: 'Maya', country: 'Philippines', coordinate: { latitude: 6.955, longitude: 126.225 }, status: 'online' },
   { id: 'friend-4', name: 'Alex', country: 'Philippines', coordinate: { latitude: 6.950, longitude: 126.220 }, status: 'online' },
+];
+
+// Mock activity data
+const mockActivities: Activity[] = [
+  {
+    id: 'activity-1',
+    userId: 'friend-1',
+    userName: 'Emma',
+    message: 'Message: Walking Alone',
+    timeAgo: '5hr',
+    location: 'Downtown',
+    timestamp: new Date(),
+  },
+  {
+    id: 'activity-2',
+    userId: 'user',
+    userName: 'You',
+    message: 'You send Arrived Home to your contacts',
+    timeAgo: '2hr',
+    location: 'Home',
+    timestamp: new Date(),
+  },
+  {
+    id: 'activity-3',
+    userId: 'friend-2',
+    userName: 'Lucas',
+    message: 'Message: Walking Alone',
+    timeAgo: '1hr',
+    location: 'Downtown',
+    timestamp: new Date(),
+  },
+  {
+    id: 'activity-4',
+    userId: 'friend-3',
+    userName: 'Maya',
+    message: 'You send Arrived Home to your contacts',
+    timeAgo: '30min',
+    location: 'Home',
+    timestamp: new Date(),
+  },
 ];
 
 // Convert to markers format for LocationTab
@@ -651,7 +693,15 @@ export const HomeScreen: React.FC = () => {
           sharedInitialRegion={sharedInitialRegion}
         />
       );
-      case 'ACTIVITY': return <PlaceholderTab name="Activity" />;
+      case 'ACTIVITY': return (
+        <ActivityTab 
+          friends={mockFriends} 
+          isBluetoothConnected={isBluetoothConnected}
+          sharedUserLocation={sharedUserLocation}
+          sharedLocationPermissionGranted={sharedLocationPermissionGranted}
+          sharedInitialRegion={sharedInitialRegion}
+        />
+      );
       case 'DEVICE': return <PlaceholderTab name="Device" />;
       case 'PROFILE': return <ProfileTab />;
       default: return (
@@ -684,8 +734,8 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.bottomSheetContent}>
              <View style={styles.bottomSheetHandle} />
              
-             {/* Quick Actions - Hidden when Friends tab is active */}
-             {activeTab !== 'FRIENDS' && (
+             {/* Quick Actions - Hidden when Friends or Activity tab is active */}
+             {activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && (
              <View style={styles.quickActionsRow}>
                 {ACTION_BUTTONS.map(action => {
                   const isActive =
@@ -732,8 +782,16 @@ export const HomeScreen: React.FC = () => {
                />
              )}
 
-             {/* SOS Hold Button - Shown when in SOS mode, above separator */}
-             {isSOSMode && (
+             {/* Activity List Panel - Shown when Activity tab is active */}
+             {activeTab === 'ACTIVITY' && (
+               <ActivityListPanel
+                 activities={mockActivities}
+                 onActivityPress={(activity) => console.log('Activity pressed:', activity)}
+               />
+             )}
+
+             {/* SOS Hold Button - Shown when in SOS mode, above separator (hidden in Activity tab) */}
+             {isSOSMode && activeTab !== 'ACTIVITY' && (
                <SOSModePanel
                  pulseAnim1={pulseAnim1}
                  pulseAnim2={pulseAnim2}
@@ -742,8 +800,8 @@ export const HomeScreen: React.FC = () => {
                />
              )}
 
-             {/* Location Settings - Shown when location mode is active, above separator */}
-             {isLocationMode && (
+             {/* Location Settings - Shown when location mode is active, above separator (hidden in Activity tab) */}
+             {isLocationMode && activeTab !== 'ACTIVITY' && (
                <LocationModePanel
                  shareMyLocation={shareMyLocation}
                  shareWithEveryone={shareWithEveryone}
@@ -752,13 +810,13 @@ export const HomeScreen: React.FC = () => {
                />
              )}
 
-             {/* Message Settings - Shown when message mode is active, above separator */}
-             {isMessageMode && (
+             {/* Message Settings - Shown when message mode is active, above separator (hidden in Activity tab) */}
+             {isMessageMode && activeTab !== 'ACTIVITY' && (
                <MessageModePanel onSendHomeStatus={handleSendHomeStatus} />
              )}
 
-             {/* Separator Line - Only show when not in Friends tab */}
-             {activeTab !== 'FRIENDS' && <View style={styles.separator} />}
+             {/* Separator Line - Only show when not in Friends or Activity tab */}
+             {activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && <View style={styles.separator} />}
 
         {/* Bottom Navigation */}
         <BottomNavBar
