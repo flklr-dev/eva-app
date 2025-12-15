@@ -18,13 +18,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as LocationService from '../services/locationService';
 import { Alert } from 'react-native';
 import { ACTION_BUTTONS } from '../constants/quickActions';
-import { COLORS, ANIMATION_CONFIG } from '../constants/theme';
+import { COLORS, ANIMATION_CONFIG, SPACING } from '../constants/theme';
 import { useSOSAnimation } from '../hooks/useSOSAnimation';
 import { useHomeNotification } from '../hooks/useHomeNotification';
 import { useQuickActionMode } from '../hooks/useQuickActionMode';
 import type { QuickActionKey, HomeStatus } from '../types/quickActions';
 import { QuickActionButton } from '../components/QuickActions';
-import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, ActivityListPanel } from '../components/BottomSheet';
+import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
 import {
   StatusChip,
   BluetoothIndicator,
@@ -34,6 +34,8 @@ import {
 } from '../components/LocationTab';
 import { FriendsTab, FriendsTabRef } from '../components/FriendsTab';
 import { ActivityTab } from '../components/ActivityTab';
+import { DeviceTab } from '../components/DeviceTab';
+import { ProfileTab } from '../components/ProfileTab';
 import { Friend, FriendWithDistance } from '../types/friends';
 import { Activity } from '../types/activity';
 import { calculateDistance } from '../utils/distanceCalculator';
@@ -405,42 +407,6 @@ const LocationTab: React.FC<{
   );
 };
 
-const ProfileTab: React.FC = () => {
-  const { logout, user } = useAuth();
-  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
-
-  const handleLogout = async () => {
-    try {
-      setIsLoggingOut(true);
-      await logout();
-    } catch (error) {
-      console.error('Logout failed:', error);
-      setIsLoggingOut(false);
-    }
-  };
-
-  return (
-    <View style={styles.profileTab}>
-      <View style={styles.profileHeader}>
-        <View style={styles.profileAvatar}>
-          <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || 'U'}</Text>
-        </View>
-        <Text style={styles.profileName}>{user?.name || 'User'}</Text>
-        <Text style={styles.profileEmail}>{user?.email || 'email@example.com'}</Text>
-      </View>
-
-      <View style={styles.profileActions}>
-        <Button 
-          style={styles.logoutButton}
-          onPress={handleLogout}
-          disabled={isLoggingOut}
-        >
-          {isLoggingOut ? 'Logging Out...' : 'Logout'}
-        </Button>
-      </View>
-    </View>
-  );
-};
 
 export const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState('LOCATION');
@@ -702,7 +668,15 @@ export const HomeScreen: React.FC = () => {
           sharedInitialRegion={sharedInitialRegion}
         />
       );
-      case 'DEVICE': return <PlaceholderTab name="Device" />;
+      case 'DEVICE': return (
+        <DeviceTab 
+          friends={mockFriends} 
+          isBluetoothConnected={isBluetoothConnected}
+          sharedUserLocation={sharedUserLocation}
+          sharedLocationPermissionGranted={sharedLocationPermissionGranted}
+          sharedInitialRegion={sharedInitialRegion}
+        />
+      );
       case 'PROFILE': return <ProfileTab />;
       default: return (
         <LocationTab 
@@ -732,10 +706,11 @@ export const HomeScreen: React.FC = () => {
           <BlurView intensity={100} tint="light" style={styles.bottomSheetContainer}>
             <View style={styles.bottomSheetBorder} />
             <View style={styles.bottomSheetContent}>
-             <View style={styles.bottomSheetHandle} />
+             {/* Bottom Sheet Handle - Hidden in Profile tab */}
+             {activeTab !== 'PROFILE' && <View style={styles.bottomSheetHandle} />}
              
-             {/* Quick Actions - Hidden when Friends or Activity tab is active */}
-             {activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && (
+             {/* Quick Actions - Hidden when Friends, Activity, Device, or Profile tab is active */}
+             {activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && (
              <View style={styles.quickActionsRow}>
                 {ACTION_BUTTONS.map(action => {
                   const isActive =
@@ -790,8 +765,19 @@ export const HomeScreen: React.FC = () => {
                />
              )}
 
-             {/* SOS Hold Button - Shown when in SOS mode, above separator (hidden in Activity tab) */}
-             {isSOSMode && activeTab !== 'ACTIVITY' && (
+             {/* Device Panel - Shown when Device tab is active */}
+             {activeTab === 'DEVICE' && (
+               <DevicePanel
+                 isBluetoothConnected={isBluetoothConnected}
+                 batteryLevel={85}
+                 onAddDevice={() => console.log('Add device pressed')}
+                 onTestSirenToggle={(enabled) => console.log('Test siren toggled:', enabled)}
+                 onConnectDevice={() => console.log('Connect device pressed')}
+               />
+             )}
+
+             {/* SOS Hold Button - Shown when in SOS mode, above separator (hidden in Friends, Activity, Device, and Profile tab) */}
+             {isSOSMode && activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && (
                <SOSModePanel
                  pulseAnim1={pulseAnim1}
                  pulseAnim2={pulseAnim2}
@@ -800,8 +786,8 @@ export const HomeScreen: React.FC = () => {
                />
              )}
 
-             {/* Location Settings - Shown when location mode is active, above separator (hidden in Activity tab) */}
-             {isLocationMode && activeTab !== 'ACTIVITY' && (
+             {/* Location Settings - Shown when location mode is active, above separator (hidden in Friends, Activity, Device, and Profile tab) */}
+             {isLocationMode && activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && (
                <LocationModePanel
                  shareMyLocation={shareMyLocation}
                  shareWithEveryone={shareWithEveryone}
@@ -810,13 +796,13 @@ export const HomeScreen: React.FC = () => {
                />
              )}
 
-             {/* Message Settings - Shown when message mode is active, above separator (hidden in Activity tab) */}
-             {isMessageMode && activeTab !== 'ACTIVITY' && (
+             {/* Message Settings - Shown when message mode is active, above separator (hidden in Friends, Activity, Device, and Profile tab) */}
+             {isMessageMode && activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && (
                <MessageModePanel onSendHomeStatus={handleSendHomeStatus} />
              )}
 
-             {/* Separator Line - Only show when not in Friends or Activity tab */}
-             {activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && <View style={styles.separator} />}
+             {/* Separator Line - Only show when not in Friends, Activity, Device, or Profile tab */}
+             {activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && <View style={styles.separator} />}
 
         {/* Bottom Navigation */}
         <BottomNavBar
@@ -1035,50 +1021,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
     textAlign: 'center',
-  },
-  profileTab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 32,
-    paddingTop: height * 0.15,
-  },
-  profileHeader: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  profileAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E5E7EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  profileAvatarText: {
-    fontSize: 36,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  profileName: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  profileEmail: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  profileActions: {
-    width: '100%',
-    marginBottom: 80,
-  },
-  logoutButton: {
-    width: '100%',
-    maxWidth: 320,
-    alignSelf: 'center',
   },
   bottomSheetWrapper: {
     position: 'absolute',
@@ -1348,7 +1290,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  homeSettingsContainer: {
+  homeSettingsContainerOld: {
     marginTop: 14,
     marginBottom: 16,
     paddingHorizontal: 16,
@@ -1357,7 +1299,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 16,
   },
-  homeSettingsTitle: {
+  homeSettingsTitleOld: {
     fontSize: 22,
     fontWeight: '600',
     color: '#000000',
@@ -1401,7 +1343,7 @@ const styles = StyleSheet.create({
     marginRight: 0,
     marginLeft: 2, 
   },
-  homeIconContainer: {
+  homeIconContainerOld: {
     position: 'relative',
     width: 20,
     height: 20,

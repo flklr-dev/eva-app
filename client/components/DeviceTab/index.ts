@@ -1,0 +1,2 @@
+export { DeviceTab } from './DeviceTab';
+
