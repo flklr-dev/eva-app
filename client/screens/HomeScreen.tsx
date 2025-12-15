@@ -32,7 +32,7 @@ import {
   LocationPermissionModal,
   NotificationCancelModal,
 } from '../components/LocationTab';
-import { FriendsTab } from '../components/FriendsTab';
+import { FriendsTab, FriendsTabRef } from '../components/FriendsTab';
 import { Friend, FriendWithDistance } from '../types/friends';
 import { calculateDistance } from '../utils/distanceCalculator';
 
@@ -55,12 +55,12 @@ const PlaceholderTab: React.FC<{ name: string }> = ({ name }) => (
   </View>
 );
 
-// Mock friend data
+// Mock friend data - Located near Mati City, Davao Oriental
 const mockFriends: Friend[] = [
-  { id: 'friend-1', name: 'Emma', country: 'Netherlands', coordinate: { latitude: 37.426, longitude: -122.160 }, status: 'online' },
-  { id: 'friend-2', name: 'Lucas', country: 'Germany', coordinate: { latitude: 37.432, longitude: -122.145 }, status: 'online' },
-  { id: 'friend-3', name: 'Maya', country: 'France', coordinate: { latitude: 37.415, longitude: -122.148 }, status: 'online' },
-  { id: 'friend-4', name: 'Alex', country: 'Spain', coordinate: { latitude: 37.440, longitude: -122.150 }, status: 'online' },
+  { id: 'friend-1', name: 'Emma', country: 'Philippines', coordinate: { latitude: 6.952, longitude: 126.222 }, status: 'online' },
+  { id: 'friend-2', name: 'Lucas', country: 'Philippines', coordinate: { latitude: 6.948, longitude: 126.218 }, status: 'online' },
+  { id: 'friend-3', name: 'Maya', country: 'Philippines', coordinate: { latitude: 6.955, longitude: 126.225 }, status: 'online' },
+  { id: 'friend-4', name: 'Alex', country: 'Philippines', coordinate: { latitude: 6.950, longitude: 126.220 }, status: 'online' },
 ];
 
 // Convert to markers format for LocationTab
@@ -73,7 +73,25 @@ const friendMarkers: Array<{ id: string; coordinate: LatLng; name: string; statu
 
 // ACTION_BUTTONS now imported from constants/quickActions.ts
 
-const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAnim?: Animated.Value; onDismissNotification?: () => void }> = ({ showHomeNotification = false, homeNotificationAnim, onDismissNotification }) => {
+const LocationTab: React.FC<{ 
+  showHomeNotification?: boolean; 
+  homeNotificationAnim?: Animated.Value; 
+  onDismissNotification?: () => void;
+  sharedUserLocation?: { latitude: number; longitude: number } | null;
+  sharedLocationPermissionGranted?: boolean;
+  onUserLocationChange?: (location: { latitude: number; longitude: number } | null) => void;
+  onLocationPermissionChange?: (granted: boolean) => void;
+  sharedInitialRegion?: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+}> = ({ 
+  showHomeNotification = false, 
+  homeNotificationAnim, 
+  onDismissNotification,
+  sharedUserLocation,
+  sharedLocationPermissionGranted = false,
+  onUserLocationChange,
+  onLocationPermissionChange,
+  sharedInitialRegion,
+}) => {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const [isNotified, setIsNotified] = useState(false);
@@ -81,9 +99,12 @@ const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAn
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Location state
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
+  // Use shared location state if provided, otherwise use local state
+  const [localUserLocation, setLocalUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [localLocationPermissionGranted, setLocalLocationPermissionGranted] = useState(false);
+  const userLocation = sharedUserLocation !== undefined ? sharedUserLocation : localUserLocation;
+  const locationPermissionGranted = sharedLocationPermissionGranted !== undefined ? sharedLocationPermissionGranted : localLocationPermissionGranted;
+  
   const [showLocationPermissionModal, setShowLocationPermissionModal] = useState(false);
   const [locationPermissionMessage, setLocationPermissionMessage] = useState<string>('');
   const [isRequestingLocation, setIsRequestingLocation] = useState(true);
@@ -91,8 +112,10 @@ const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAn
   // Bluetooth state
   const [isBluetoothConnected, setIsBluetoothConnected] = useState(false); // false = red, true = green
 
-  const initialRegion = useMemo(() => {
-    // Use user location if available, otherwise default
+  // Use shared initial region if provided, otherwise calculate from userLocation
+  const initialRegion = sharedInitialRegion || useMemo(() => {
+    // ALWAYS focus on user location when available (LocationTab default view)
+    // Friend markers will still be visible on the map
     if (userLocation) {
       return {
         latitude: userLocation.latitude,
@@ -101,11 +124,12 @@ const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAn
         longitudeDelta: 0.01,
       };
     }
+    // Default fallback
     return {
-      latitude: 37.426,
-      longitude: -122.163,
-      latitudeDelta: 0.07,
-      longitudeDelta: 0.07,
+      latitude: 6.950,
+      longitude: 126.220,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
     };
   }, [userLocation]);
 
@@ -158,16 +182,26 @@ const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAn
       const permissionStatus = await LocationService.requestLocationPermission();
       
       if (permissionStatus.granted) {
-        setLocationPermissionGranted(true);
+        const granted = true;
+        if (onLocationPermissionChange) {
+          onLocationPermissionChange(granted);
+        } else {
+          setLocalLocationPermissionGranted(granted);
+        }
         
         // Get current location
         const location = await LocationService.getCurrentLocation();
         
         if (location) {
-          setUserLocation({
+          const locationData = {
             latitude: location.latitude,
             longitude: location.longitude,
-          });
+          };
+          if (onUserLocationChange) {
+            onUserLocationChange(locationData);
+          } else {
+            setLocalUserLocation(locationData);
+          }
         } else {
           // Location fetch failed but permission granted - show error
           setLocationPermissionMessage('Unable to get your location. Please ensure location services are enabled.');
@@ -175,7 +209,12 @@ const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAn
         }
       } else {
         // Permission denied
-        setLocationPermissionGranted(false);
+        const granted = false;
+        if (onLocationPermissionChange) {
+          onLocationPermissionChange(granted);
+        } else {
+          setLocalLocationPermissionGranted(granted);
+        }
         setLocationPermissionMessage(
           permissionStatus.message || 
           'Location permission is required for EVA Alert to work. Please enable it in your device settings.'
@@ -274,7 +313,7 @@ const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAn
         {isRequestingLocation ? (
           <View style={styles.loadingContainer}>
             <Text style={styles.loadingText}>Requesting location access...</Text>
-          </View>
+      </View>
         ) : (
           <MapView
             style={StyleSheet.absoluteFill}
@@ -305,7 +344,7 @@ const LocationTab: React.FC<{ showHomeNotification?: boolean; homeNotificationAn
             </View>
           </>
         )}
-      </View>
+          </View>
 
       <LocationPermissionModal
         visible={showLocationPermissionModal}
@@ -365,21 +404,56 @@ export const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState('LOCATION');
   const insets = useSafeAreaInsets();
   
-  // Mock user location (in real app, get from location service)
-  const userLocation = { latitude: 37.426, longitude: -122.163 };
+  // Shared user location state - used by all tabs for consistent map view
+  const [sharedUserLocation, setSharedUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [sharedLocationPermissionGranted, setSharedLocationPermissionGranted] = useState(false);
   
-  // Calculate distances for friends
-  const friendsWithDistance: FriendWithDistance[] = React.useMemo(() => {
+  // Shared map region calculation - same for all tabs (consistent zoom level)
+  const sharedInitialRegion = useMemo(() => {
+    if (sharedUserLocation) {
+      return {
+        latitude: sharedUserLocation.latitude,
+        longitude: sharedUserLocation.longitude,
+        latitudeDelta: 0.01, // Consistent zoom level across all tabs
+        longitudeDelta: 0.01, // Consistent zoom level across all tabs
+      };
+    }
+    // Default fallback
+    return {
+      latitude: 6.950,
+      longitude: 126.220,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+  }, [sharedUserLocation]);
+  
+  // Friends with distance state (updated by FriendsTab when GPS location is available)
+  const [friendsWithDistance, setFriendsWithDistance] = useState<FriendWithDistance[]>(() => {
+    // Initial calculation with default location
+    const defaultLocation = { latitude: 6.950, longitude: 126.220 };
     return mockFriends.map(friend => ({
       ...friend,
       distance: calculateDistance(
-        userLocation.latitude,
-        userLocation.longitude,
+        defaultLocation.latitude,
+        defaultLocation.longitude,
         friend.coordinate.latitude,
         friend.coordinate.longitude
       ),
     }));
-  }, []);
+  });
+  
+  const handleFriendsWithDistanceChange = (friends: FriendWithDistance[]) => {
+    setFriendsWithDistance(friends);
+  };
+  
+  const friendsTabRef = React.useRef<FriendsTabRef | null>(null);
+  
+  const handleFriendPress = (friend: FriendWithDistance) => {
+    // Navigate map to friend location
+    if (friendsTabRef.current) {
+      friendsTabRef.current.navigateToFriend(friend);
+    }
+  };
   
   // Bluetooth state (shared across tabs)
   const [isBluetoothConnected] = useState(false);
@@ -534,14 +608,64 @@ export const HomeScreen: React.FC = () => {
     // TODO: Implement add friend functionality
   };
 
+  const handleShareFriend = () => {
+    console.log('Share friend pressed');
+    // TODO: Implement share friend functionality
+  };
+
+  const handleMessageFriend = () => {
+    console.log('Message friend pressed');
+    // TODO: Implement message friend functionality
+  };
+
+  const handleScanFriend = () => {
+    console.log('Scan friend QR code pressed');
+    // TODO: Implement scan QR code functionality
+  };
+
   const renderContent = () => {
     switch (activeTab) {
-      case 'LOCATION': return <LocationTab showHomeNotification={homeNotificationVisible} homeNotificationAnim={homeNotificationAnim} onDismissNotification={handleDismissNotification} />;
-      case 'FRIENDS': return <FriendsTab friends={mockFriends} isBluetoothConnected={isBluetoothConnected} />;
+      case 'LOCATION': return (
+        <LocationTab 
+          showHomeNotification={homeNotificationVisible} 
+          homeNotificationAnim={homeNotificationAnim} 
+          onDismissNotification={handleDismissNotification}
+          sharedUserLocation={sharedUserLocation}
+          sharedLocationPermissionGranted={sharedLocationPermissionGranted}
+          onUserLocationChange={setSharedUserLocation}
+          onLocationPermissionChange={setSharedLocationPermissionGranted}
+          sharedInitialRegion={sharedInitialRegion}
+        />
+      );
+      case 'FRIENDS': return (
+        <FriendsTab 
+          ref={friendsTabRef} 
+          friends={mockFriends} 
+          isBluetoothConnected={isBluetoothConnected} 
+          onFriendsWithDistanceChange={handleFriendsWithDistanceChange} 
+          onFriendPress={handleFriendPress}
+          sharedUserLocation={sharedUserLocation}
+          sharedLocationPermissionGranted={sharedLocationPermissionGranted}
+          onUserLocationChange={setSharedUserLocation}
+          onLocationPermissionChange={setSharedLocationPermissionGranted}
+          sharedInitialRegion={sharedInitialRegion}
+        />
+      );
       case 'ACTIVITY': return <PlaceholderTab name="Activity" />;
       case 'DEVICE': return <PlaceholderTab name="Device" />;
       case 'PROFILE': return <ProfileTab />;
-      default: return <LocationTab showHomeNotification={homeNotificationVisible} homeNotificationAnim={homeNotificationAnim} onDismissNotification={handleDismissNotification} />;
+      default: return (
+        <LocationTab 
+          showHomeNotification={homeNotificationVisible} 
+          homeNotificationAnim={homeNotificationAnim} 
+          onDismissNotification={handleDismissNotification}
+          sharedUserLocation={sharedUserLocation}
+          sharedLocationPermissionGranted={sharedLocationPermissionGranted}
+          onUserLocationChange={setSharedUserLocation}
+          onLocationPermissionChange={setSharedLocationPermissionGranted}
+          sharedInitialRegion={sharedInitialRegion}
+        />
+      );
     }
   };
 
@@ -601,6 +725,10 @@ export const HomeScreen: React.FC = () => {
                <FriendsListPanel
                  friends={friendsWithDistance}
                  onAddFriend={handleAddFriend}
+                 onFriendPress={handleFriendPress}
+                 onShare={handleShareFriend}
+                 onMessage={handleMessageFriend}
+                 onScan={handleScanFriend}
                />
              )}
 

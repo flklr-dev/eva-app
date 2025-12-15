@@ -28,16 +28,27 @@ interface MapViewProps {
     longitude: number;
   } | null;
   style?: any;
+  mapPadding?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
 }
 
-export const MapView: React.FC<MapViewProps> = ({
+export const MapView = React.forwardRef<any, MapViewProps>(({
   initialRegion,
   markers = [],
   showsUserLocation = true,
   userLocation = null,
   style,
-}) => {
+  mapPadding,
+  onNavigateToLocation,
+}, ref) => {
   const webViewRef = useRef<WebView>(null);
+  
+  // Expose WebView ref to parent
+  React.useImperativeHandle(ref, () => webViewRef.current);
 
   const generateMapHTML = () => {
     // Use user location if available, otherwise use initial region
@@ -55,15 +66,24 @@ export const MapView: React.FC<MapViewProps> = ({
       }))
     );
 
+    const padding = mapPadding ? JSON.stringify({
+      top: mapPadding.top || 0,
+      right: mapPadding.right || 0,
+      bottom: mapPadding.bottom || 0,
+      left: mapPadding.left || 0
+    }) : 'null';
+
     const userLocationScript = userLocation && showsUserLocation ? `
       const userPos = [${userLocation.latitude}, ${userLocation.longitude}];
-      L.circleMarker(userPos, {
+      const userMarker = L.circleMarker(userPos, {
         radius: 10,
         fillColor: '#4285F4',
         color: '#ffffff',
         weight: 3,
         fillOpacity: 1
       }).addTo(map).bindPopup('Your Location');
+      
+      // Focus on user location (default view for LocationTab)
       map.setView(userPos, ${zoom});
     ` : '';
 
@@ -137,7 +157,7 @@ export const MapView: React.FC<MapViewProps> = ({
       />
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
