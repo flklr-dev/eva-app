@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { ToggleSwitch } from '../ToggleSwitch';
 import { COLORS, BORDER_RADIUS, SPACING } from '../../constants/theme';
 
@@ -66,12 +66,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.OVERLAY_WHITE,
     borderRadius: BORDER_RADIUS.LG,
     paddingVertical: 14,
     paddingHorizontal: SPACING.MD,
     marginBottom: 12,
     minHeight: 56,
+    ...Platform.select({
+      ios: {
+        backgroundColor: COLORS.OVERLAY_WHITE,
+      },
+      android: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.08)',
+      },
+      default: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.08)',
+      },
+    }),
   },
   locationSettingTextContainer: {
     flex: 1,

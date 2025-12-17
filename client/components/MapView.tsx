@@ -43,7 +43,6 @@ export const MapView = React.forwardRef<any, MapViewProps>(({
   userLocation = null,
   style,
   mapPadding,
-  onNavigateToLocation,
 }, ref) => {
   const webViewRef = useRef<WebView>(null);
   
@@ -97,6 +96,24 @@ export const MapView = React.forwardRef<any, MapViewProps>(({
             * { margin: 0; padding: 0; box-sizing: border-box; }
             html, body, #map { width: 100%; height: 100%; }
             .leaflet-container { background: #f0f4f8; }
+            /* Hide tile borders/grid lines - especially for Android */
+            .leaflet-tile-container img {
+              outline: none !important;
+              border: none !important;
+            }
+            .leaflet-tile {
+              outline: none !important;
+              border: none !important;
+              filter: none;
+            }
+            .leaflet-tile-pane {
+              opacity: 1;
+            }
+            /* Prevent gaps between tiles */
+            .leaflet-fade-anim .leaflet-tile {
+              -webkit-transition: none;
+              transition: none;
+            }
           </style>
         </head>
         <body>

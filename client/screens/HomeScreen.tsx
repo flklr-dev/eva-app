@@ -600,7 +600,7 @@ export const HomeScreen: React.FC = () => {
     console.log('SOS sent!');
     // Don't exit SOS mode - user must click SOS button again to exit
     setSOSHolding(false);
-  };
+};
 
 
   // Cleanup on unmount
@@ -693,19 +693,8 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
-  return (
-    <ImageBackground source={backgroundImage} style={{ flex: 1 }} imageStyle={{ resizeMode: 'cover' }}>
-        <SafeAreaView style={{ flex: 1 }} edges={[]}>
-
-      <View style={styles.root}>
-        {/* Main Content */}
-        <View style={styles.content}>{renderContent()}</View>
-
-        {/* Unified Bottom Sheet */}
-        <View style={styles.bottomSheetWrapper}>
-          <BlurView intensity={100} tint="light" style={styles.bottomSheetContainer}>
-            <View style={styles.bottomSheetBorder} />
-            <View style={styles.bottomSheetContent}>
+  const bottomSheetInner = (
+    <>
              {/* Bottom Sheet Handle - Hidden in Profile tab */}
              {activeTab !== 'PROFILE' && <View style={styles.bottomSheetHandle} />}
              
@@ -742,7 +731,7 @@ export const HomeScreen: React.FC = () => {
                     />
                   );
                 })}
-              </View>
+        </View>
              )}
 
              {/* Friends List Panel - Shown when Friends tab is active */}
@@ -809,9 +798,51 @@ export const HomeScreen: React.FC = () => {
           tabs={TABS}
           activeKey={activeTab}
           onTabPress={setActiveTab}
+          safeAreaBottom={insets.bottom}
         />
+    </>
+  );
+
+  return (
+    <ImageBackground source={backgroundImage} style={{ flex: 1 }} imageStyle={{ resizeMode: 'cover' }}>
+        <SafeAreaView style={{ flex: 1 }} edges={[]}>
+
+      <View style={styles.root}>
+        {/* Main Content */}
+        <View style={styles.content}>{renderContent()}</View>
+
+        {/* Unified Bottom Sheet */}
+        <View
+          style={[
+            styles.bottomSheetWrapper,
+            { 
+              bottom: Platform.OS === 'android' 
+                ? Math.max(insets.bottom + 8, 32) // Move higher on Android to account for navigation bar
+                : 24 
+            },
+            Platform.OS === 'android' && activeTab === 'PROFILE' && styles.bottomSheetWrapperAndroidProfile,
+          ]}
+        >
+          {Platform.OS === 'ios' ? (
+            <BlurView intensity={100} tint="light" style={styles.bottomSheetContainer}>
+              <View style={styles.bottomSheetBorder} />
+              <View style={styles.bottomSheetContent}>
+                {bottomSheetInner}
+              </View>
+            </BlurView>
+          ) : (
+            <View
+              style={[
+                styles.bottomSheetContainer,
+                styles.bottomSheetContainerAndroid,
+                activeTab === 'PROFILE' && styles.bottomSheetContainerAndroidProfile,
+              ]}
+            >
+              <View style={styles.bottomSheetContent}>
+                {bottomSheetInner}
+              </View>
             </View>
-          </BlurView>
+          )}
         </View>
       </View>
       </SafeAreaView>
@@ -969,14 +1000,21 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 16,
     borderRadius: 24,
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.2)',
+    // iOS gets glassmorphism, Android gets solid white to avoid transparency issues
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.95)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    borderColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 0, // No elevation to avoid white rectangle artifact
+      },
+    }),
     overflow: 'hidden',
   },
   homeNotificationIconCircle: {
@@ -1030,16 +1068,30 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     overflow: 'hidden',
     zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 10,
+    // iOS shadows only - Android elevation creates white rectangle artifacts
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 0,
+      },
+    }),
+  },
+  bottomSheetWrapperAndroidProfile: {
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   bottomSheetContainer: {
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.15)', // Ultra-light glass effect
+    // iOS gets ultra-light glass effect via BlurView, Android gets semi-transparent white for glassmorphism
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.85)',
     width: '100%',
     position: 'relative',
+    borderRadius: 36,
   },
   bottomSheetBorder: {
     position: 'absolute',
@@ -1052,10 +1104,24 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.3)',
     pointerEvents: 'none',
   },
+  bottomSheetContainerAndroid: {
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    borderRadius: 36,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    // No elevation to avoid white rectangle artifact - use border for subtle depth
+  },
+  bottomSheetContainerAndroidProfile: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
+    elevation: 0,
+    shadowColor: 'transparent',
+  },
   bottomSheetContent: {
     paddingTop: 12,
     paddingBottom: 8,
     width: '100%',
+    // Additional padding will be handled by BottomNavBar's safeAreaBottom
   },
   bottomSheetHandle: {
     width: 48,

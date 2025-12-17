@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TouchableOpacity, StyleSheet, ImageBackground, ActivityIndicator, Platform, useWindowDimensions, KeyboardAvoidingView, ScrollView } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { NotificationModal } from '../components/NotificationModal';
@@ -8,7 +8,6 @@ import { validators } from '../utils/validators';
 import { useAuth } from '../context/AuthContext';
 
 const backgroundImage = require('../assets/background.png');
-const { width, height } = Dimensions.get('window');
 
 type Props = {
   onNavigate: (screen: string) => void;
@@ -16,6 +15,17 @@ type Props = {
 
 export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
   console.log('[LoginScreen] Component rendered');
+  const { width: winW, height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isSmall = winW < 360;
+  const isMedium = winW < 400;
+  const isShortScreen = winH < 700;
+  const isTallScreen = winH > 800;
+  
+  // Dynamic spacing based on screen height
+  const brandingTopMargin = isShortScreen ? winH * 0.05 : winH * 0.08;
+  const buttonBottomOffset = isShortScreen ? 70 : isTallScreen ? 120 : 100;
+  const switchBottomOffset = isShortScreen ? 20 : 40;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -123,42 +133,62 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
     <>
       <ImageBackground source={backgroundImage} style={{ flex: 1 }} imageStyle={{ resizeMode: 'cover' }}>
         <SafeAreaView style={{ flex: 1 }}>
-          <View style={styles.container}>
-            <View style={styles.branding}>
-              <Text style={styles.brand}>EVA</Text>
-            </View>
+          <KeyboardAvoidingView 
+            style={{ flex: 1 }} 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <ScrollView 
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <View style={[styles.container, isSmall && styles.containerSmall, { minHeight: winH - insets.top - insets.bottom }]}>
+                <View style={[styles.branding, { marginTop: brandingTopMargin }]}>
+                  <Text style={[styles.brand, isSmall && styles.brandSmall]}>EVA</Text>
+                </View>
 
-            <View style={styles.body}>
-              <Input
-                placeholder="Enter your email address"
-                value={email}
-                onChangeText={handleEmailChange}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                error={fieldErrors.email}
-                autoCorrect={false}
-              />
-              <Input
-                placeholder="Enter your password"
-                value={password}
-                onChangeText={handlePasswordChange}
-                secureTextEntry
-                error={fieldErrors.password}
-              />
-              <TouchableOpacity style={styles.forgotWrapper}>
-                <Text style={styles.forgot}>Forgot password?</Text>
-              </TouchableOpacity>
-            </View>
-            <Button onPress={handleLogin} style={styles.loginButton} disabled={isLoading}>
-              {isLoading ? <ActivityIndicator size="small" color="#111827" /> : 'Login'}
-            </Button>
-            <View style={styles.switchContainer}>
-              <Text style={styles.switchText}>Don't have an account?</Text>
-              <TouchableOpacity onPress={() => onNavigate('REGISTER')}>
-                <Text style={styles.switchAction}>Sign up here</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+                <View style={[styles.body, isSmall && styles.bodySmall]}>
+                  <Input
+                    placeholder="Enter your email address"
+                    value={email}
+                    onChangeText={handleEmailChange}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    error={fieldErrors.email}
+                    autoCorrect={false}
+                  />
+                  <Input
+                    placeholder="Enter your password"
+                    value={password}
+                    onChangeText={handlePasswordChange}
+                    secureTextEntry
+                    error={fieldErrors.password}
+                  />
+                  <TouchableOpacity style={styles.forgotWrapper}>
+                    <Text style={styles.forgot}>Forgot password?</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={[styles.bottomSection, { paddingBottom: switchBottomOffset }]}>
+                  <Button
+                    onPress={handleLogin}
+                    style={StyleSheet.flatten([styles.loginButton, isSmall ? styles.loginButtonSmall : {}])}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? <ActivityIndicator size="small" color="#111827" /> : 'Login'}
+                  </Button>
+                  <View style={[styles.switchContainer, isSmall && styles.switchContainerSmall]}>
+                    <Text style={styles.switchText}>Don't have an account?</Text>
+                    <TouchableOpacity onPress={() => onNavigate('REGISTER')}>
+                      <Text style={styles.switchAction}>Sign up here</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </ImageBackground>
       <NotificationModal
@@ -176,16 +206,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 28,
-    paddingBottom: 32,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  containerSmall: {
+    paddingHorizontal: 20,
   },
   branding: {
     alignItems: 'center',
-    marginTop: height * 0.08,
-    marginBottom: 40,
-    position: 'absolute',
-    top: 0,
+    marginBottom: 20,
     width: '100%',
   },
   brand: {
@@ -194,20 +223,36 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     letterSpacing: 2,
     opacity: 1,
-    fontFamily: 'Helvetica',
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica' : 'sans-serif',
+  },
+  brandSmall: {
+    fontSize: 40,
   },
   body: {
     flex: 1,
     gap: 2,
     width: '100%',
+    maxWidth: 400,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  bodySmall: {
+    gap: 0,
+    paddingVertical: 10,
+  },
+  bottomSection: {
+    width: '100%',
+    alignItems: 'center',
+    paddingTop: 10,
   },
   loginButton: {
-    position: 'absolute',
-    bottom: 100,
     width: '100%',
     maxWidth: 320,
+    marginBottom: 20,
+  },
+  loginButtonSmall: {
+    maxWidth: 280,
   },
   forgotWrapper: {
     alignSelf: 'flex-start',
@@ -225,11 +270,11 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
-    position: 'absolute',
-    bottom: 40,
     width: '100%',
     paddingHorizontal: 28,
+  },
+  switchContainerSmall: {
+    paddingHorizontal: 20,
   },
   switchText: {
     fontSize: 14,
@@ -242,5 +287,4 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontWeight: '600',
   },
-
 });

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FriendListItem } from '../FriendsTab/FriendListItem';
 import { FriendWithDistance } from '../../types/friends';
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   listContainer: {
-    maxHeight: 290,
+    maxHeight: Math.min(320, Dimensions.get('window').height * 0.55),
   },
   listContent: {
     paddingBottom: SPACING.SM,

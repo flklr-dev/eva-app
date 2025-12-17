@@ -1,5 +1,13 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import {
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  ViewStyle,
+  TextStyle,
+  Platform,
+  useWindowDimensions,
+} from 'react-native';
 
 interface ButtonProps {
   children: React.ReactNode;
@@ -18,8 +26,12 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   disabled = false,
 }) => {
+  const { width } = useWindowDimensions();
+  const isSmall = width < 360;
+  const isMedium = width < 400;
+
   const baseStyle: ViewStyle = {
-    height: 56,
+    height: isSmall ? 50 : isMedium ? 54 : 56,
     borderRadius: 28,
     flexDirection: 'row',
     alignItems: 'center',
@@ -31,21 +43,35 @@ export const Button: React.FC<ButtonProps> = ({
     primary: {
       backgroundColor: '#F1F8E9',
       borderWidth: 0,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 2,
-      elevation: 1,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 2,
+        },
+        android: {
+          elevation: 2,
+        },
+        default: {},
+      }),
     },
     secondary: {
       backgroundColor: '#fff',
       borderWidth: 1,
       borderColor: '#f3f4f6',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 2,
-      elevation: 1,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 2,
+        },
+        android: {
+          elevation: 2,
+        },
+        default: {},
+      }),
     },
     text: {
       backgroundColor: 'transparent',
@@ -55,7 +81,7 @@ export const Button: React.FC<ButtonProps> = ({
     },
   };
 
-  const widthStyle: ViewStyle = fullWidth ? { width: '100%' } : { paddingHorizontal: 32 };
+  const widthStyle: ViewStyle = fullWidth ? { width: '100%' } : { paddingHorizontal: isSmall ? 24 : 32 };
 
   return (
     <TouchableOpacity

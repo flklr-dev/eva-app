@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,6 +11,9 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export const AddToHomeScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isSmall = width < 360;
+  const isMedium = width < 400;
 
   const handleSave = () => {
     // TODO: Implement save functionality
@@ -27,7 +30,7 @@ export const AddToHomeScreen: React.FC = () => {
       <Text style={[styles.title, { top: insets.top + 100 }]}>Add to your home</Text>
 
       {/* Address Field */}
-      <View style={[styles.addressFieldWrapper, { marginTop: insets.top + 160 }]}>
+      <View style={[styles.addressFieldWrapper, { marginTop: insets.top + (isSmall ? 140 : 160) }]}>
         <Text style={styles.fieldLabel}>ADDRESS</Text>
         <View style={styles.fieldSeparator} />
         <Text style={styles.addressText}>Waterlandplein 255 Amsterdam 1025 GB</Text>
@@ -35,7 +38,11 @@ export const AddToHomeScreen: React.FC = () => {
 
       {/* Safe Button - Bottom */}
       <TouchableOpacity 
-        style={[styles.safeButton, { bottom: insets.bottom + SPACING.XL }]} 
+        style={[
+          styles.safeButton,
+          { bottom: insets.bottom + SPACING.XL },
+          isSmall && styles.safeButtonSmall,
+        ]} 
         onPress={handleSave}
         activeOpacity={0.8}
       >
@@ -102,6 +109,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.MD,
+  },
+  safeButtonSmall: {
+    paddingVertical: SPACING.SM,
   },
   safeButtonText: {
     fontSize: 16,

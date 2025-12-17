@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Modal, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Modal, Dimensions, useWindowDimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +16,21 @@ export const ProfileTab: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const { logout, user } = useAuth();
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isSmall = winW < 360;
+  const isMedium = winW < 400;
+  
+  // Calculate bottom padding dynamically based on screen height
+  // For taller screens, we need more padding to push buttons to bottom
+  // Bottom nav bar is ~64px, safe area bottom varies by device
+  const bottomNavHeight = 64;
+  const safeAreaBottom = insets.bottom;
+  // Calculate padding to position buttons at the very bottom
+  // On taller screens, add more padding to account for extra screen space
+  const isTallScreen = winH > 800;
+  const bottomActionsPaddingBottom = safeAreaBottom + bottomNavHeight + (isTallScreen ? SPACING.LG : SPACING.MD);
+  // Use minimal scroll content padding - bottomActions will use marginTop: 'auto' to push to bottom
+  const scrollContentPaddingBottom = bottomNavHeight + safeAreaBottom + SPACING.MD;
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedName, setEditedName] = useState(user?.name || '');
@@ -134,14 +149,23 @@ export const ProfileTab: React.FC = () => {
 
       <ScrollView 
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: scrollContentPaddingBottom }
+        ]}
         showsVerticalScrollIndicator={false}
+        bounces={false}
+        alwaysBounceVertical={false}
+        scrollEnabled={false}
       >
         {isEditMode ? (
           /* Edit Mode Content */
           <>
             {/* Profile Container with Picture and Edit Button - Left aligned */}
-            <View style={[styles.editProfileContainer, { marginTop: insets.top + 140 }]}>
+            <View style={[
+              styles.editProfileContainer,
+              { marginTop: insets.top + (isSmall ? 120 : 140) },
+            ]}>
               <View style={styles.profilePictureWrapper}>
                 <View style={styles.profilePictureContainer}>
                   <View style={styles.profileInitials}>
@@ -184,7 +208,10 @@ export const ProfileTab: React.FC = () => {
           /* View Mode Content */
           <>
             {/* Profile Container */}
-            <View style={[styles.profileContainer, { marginTop: insets.top + 140 }]}>
+            <View style={[
+              styles.profileContainer,
+              { marginTop: insets.top + (isSmall ? 120 : 140) },
+            ]}>
               {/* Profile Picture */}
               <View style={styles.profilePictureContainer}>
                 <View style={styles.profileInitials}>
@@ -241,7 +268,11 @@ export const ProfileTab: React.FC = () => {
 
         {/* Bottom Actions - Only show in view mode */}
         {!isEditMode && (
-          <View style={styles.bottomActions}>
+          <View style={[
+            styles.bottomActions,
+            isSmall && styles.bottomActionsSmall,
+            { paddingBottom: bottomActionsPaddingBottom, marginTop: 'auto' }
+          ]}>
             {/* Delete Account Button */}
             <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount} activeOpacity={0.7}>
               <MaterialCommunityIcons name="trash-can-outline" size={20} color={COLORS.TEXT_SECONDARY} />
@@ -359,7 +390,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 300, // More space to push buttons to bottom
+    // paddingBottom is now set dynamically based on screen height
+    // flexGrow ensures bottomActions can use marginTop: 'auto' to push to bottom
   },
   evaBrand: {
     position: 'absolute',
@@ -607,7 +639,11 @@ const styles = StyleSheet.create({
   bottomActions: {
     marginTop: 'auto',
     paddingTop: SPACING.XL * 4,
-    paddingBottom: SPACING.XL * 5,
+    // paddingBottom is now set dynamically based on screen height and safe area
+  },
+  bottomActionsSmall: {
+    paddingTop: SPACING.XL * 3,
+    // paddingBottom is now set dynamically based on screen height and safe area
   },
   deleteAccountButton: {
     flexDirection: 'row',

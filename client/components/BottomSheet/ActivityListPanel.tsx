@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { ActivityListItem } from '../ActivityTab/ActivityListItem';
 import { Activity } from '../../types/activity';
 import { COLORS, SPACING } from '../../constants/theme';
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
   },
   listContainer: {
-    maxHeight: 290,
+    maxHeight: Math.min(320, Dimensions.get('window').height * 0.55),
   },
   listContent: {
     paddingBottom: SPACING.SM,

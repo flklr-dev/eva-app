@@ -64,6 +64,7 @@ export const requestLocationPermission = async (): Promise<LocationPermissionSta
 
 /**
  * Get current location with error handling
+ * Optimized for Android: tries last known location first for faster response
  */
 export const getCurrentLocation = async (): Promise<LocationData | null> => {
   try {
@@ -75,9 +76,26 @@ export const getCurrentLocation = async (): Promise<LocationData | null> => {
       return null;
     }
 
-    // Get current position
+    // On Android, try to get last known location first for faster initial response
+    if (Platform.OS === 'android') {
+      const lastKnown = await Location.getLastKnownPositionAsync();
+      if (lastKnown) {
+        // If last known location is less than 60 seconds old, use it
+        const age = Date.now() - lastKnown.timestamp;
+        if (age < 60000) {
+          return {
+            latitude: lastKnown.coords.latitude,
+            longitude: lastKnown.coords.longitude,
+            accuracy: lastKnown.coords.accuracy || undefined,
+            timestamp: lastKnown.timestamp,
+          };
+        }
+      }
+    }
+
+    // Get current position with lower accuracy for faster response on Android
     const location = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced, // Good balance between accuracy and battery
+      accuracy: Platform.OS === 'android' ? Location.Accuracy.Low : Location.Accuracy.Balanced,
       timeInterval: 0,
       distanceInterval: 0,
     });

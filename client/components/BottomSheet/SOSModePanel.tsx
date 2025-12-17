@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
 import { COLORS, SIZES, ANIMATION_CONFIG } from '../../constants/theme';
 
 interface SOSModePanelProps {
@@ -89,11 +89,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.SOS_RED,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.SOS_RED,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: COLORS.SOS_RED,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 10,
+        shadowColor: 'rgba(0,0,0,0.18)',
+      },
+      default: {},
+    }),
     zIndex: 10,
   },
   sosLargeButtonText: {

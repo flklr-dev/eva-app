@@ -7,6 +7,7 @@ import {
   Modal,
   Animated,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { CheckCircle, AlertCircle } from 'lucide-react-native';
 
@@ -70,6 +71,7 @@ export const NotificationModal: React.FC<ModalProps> = ({
   const isSuccess = type === 'success';
   const iconColor = isSuccess ? '#34C759' : '#FF3B30';
   const bgColor = isSuccess ? '#F0FDF4' : '#FEF2F2';
+  const androidCard = Platform.OS === 'android' ? styles.contentAndroid : null;
 
   return (
     <Modal
@@ -93,7 +95,7 @@ export const NotificationModal: React.FC<ModalProps> = ({
             },
           ]}
         >
-          <View style={[styles.content, { backgroundColor: bgColor }]}>
+          <View style={[styles.content, { backgroundColor: bgColor }, androidCard]}>
           <View style={styles.iconContainer}>
             {type === 'success' ? (
               <CheckCircle size={48} color={iconColor} strokeWidth={2} />
@@ -138,11 +140,23 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 28,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.18,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 10,
+        shadowColor: 'rgba(0,0,0,0.15)',
+      },
+      default: {},
+    }),
+  },
+  contentAndroid: {
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
   iconContainer: {
     marginBottom: 20,

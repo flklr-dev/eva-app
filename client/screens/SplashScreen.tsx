@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ImageBackground, Image } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, ImageBackground, Image, useWindowDimensions } from 'react-native';
 import { Button } from '../components/Button';
 
 const backgroundImage = require('../assets/background.png');
@@ -10,31 +10,37 @@ type Props = {
   onNavigate: (screen: string) => void;
 };
 
-export const SplashScreen: React.FC<Props> = ({ onNavigate }) => (
-  <ImageBackground source={backgroundImage} style={{ flex: 1 }} imageStyle={{ resizeMode: 'cover' }}>
-    
-    <View style={styles.container}>
-      {/* Top Section - App Name */}
-      <View style={styles.topBranding}>
-        <Text style={styles.brand}>EVA</Text>
-      </View>
+export const SplashScreen: React.FC<Props> = ({ onNavigate }) => {
+  const { width: winW } = useWindowDimensions();
+  const isSmall = winW < 360;
+  const logoSize = isSmall ? 260 : 350;
 
-      {/* Middle Section - Shield Logo */}
-      <View style={styles.shieldContainer}>
-        <Image source={evaLogo} style={{ width: 350, height: 350 }} resizeMode="contain" />
-      </View>
+  return (
+    <ImageBackground source={backgroundImage} style={{ flex: 1 }} imageStyle={{ resizeMode: 'cover' }}>
+      
+      <View style={styles.container}>
+        {/* Top Section - App Name */}
+        <View style={styles.topBranding}>
+          <Text style={styles.brand}>EVA</Text>
+        </View>
 
-      {/* Lower Section - Text and Button */}
-      <View style={styles.bottomContent}>
-        <Text style={styles.heroTitle}>Feel Safe.{"\n"}Stay Connected.</Text>
-        <Text style={styles.heroDesc}>Compact protection for every moment.</Text>
-        <View style={styles.buttonContainer}>
-          <Button onPress={() => onNavigate('LOGIN')}>Next</Button>
+        {/* Middle Section - Shield Logo */}
+        <View style={styles.shieldContainer}>
+          <Image source={evaLogo} style={{ width: logoSize, height: logoSize }} resizeMode="contain" />
+        </View>
+
+        {/* Lower Section - Text and Button */}
+        <View style={styles.bottomContent}>
+          <Text style={styles.heroTitle}>Feel Safe.{"\n"}Stay Connected.</Text>
+          <Text style={styles.heroDesc}>Compact protection for every moment.</Text>
+          <View style={styles.buttonContainer}>
+            <Button onPress={() => onNavigate('LOGIN')}>Next</Button>
+          </View>
         </View>
       </View>
-    </View>
-  </ImageBackground>
-);
+    </ImageBackground>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {

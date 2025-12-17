@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { HomeStatus } from '../../types/quickActions';
 import { COLORS, BORDER_RADIUS, SPACING, SIZES } from '../../constants/theme';
@@ -106,12 +106,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.OVERLAY_WHITE,
     borderRadius: BORDER_RADIUS.LG,
     paddingVertical: 14,
     paddingHorizontal: SPACING.MD,
     marginBottom: 12,
     minHeight: 56,
+    ...Platform.select({
+      ios: {
+        backgroundColor: COLORS.OVERLAY_WHITE,
+      },
+      android: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.08)',
+      },
+      default: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.08)',
+      },
+    }),
   },
   homeSettingLabel: {
     flex: 1,

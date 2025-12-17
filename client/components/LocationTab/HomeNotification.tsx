@@ -18,6 +18,20 @@ export const HomeNotification: React.FC<HomeNotificationProps> = ({
   onDismiss,
   topOffset,
 }) => {
+  const isAndroid = Platform.OS === 'android';
+  
+  const notificationContent = (
+    <>
+      <View style={styles.homeNotificationIconCircle}>
+        <MaterialCommunityIcons name="home-variant" size={SIZES.ICON_MD} color={COLORS.BACKGROUND_WHITE} />
+      </View>
+      <View style={styles.homeNotificationTextContainer}>
+        <Text style={styles.homeNotificationTitle}>Send Safe home</Text>
+        <Text style={styles.homeNotificationSubtitle}>You are safely home.</Text>
+      </View>
+    </>
+  );
+
   return (
     <Animated.View
       style={[
@@ -40,15 +54,15 @@ export const HomeNotification: React.FC<HomeNotificationProps> = ({
       ]}
     >
       <TouchableOpacity activeOpacity={0.9} onPress={onDismiss}>
-        <BlurView intensity={80} tint="light" style={styles.homeNotification}>
-          <View style={styles.homeNotificationIconCircle}>
-            <MaterialCommunityIcons name="home-variant" size={SIZES.ICON_MD} color={COLORS.BACKGROUND_WHITE} />
+        {isAndroid ? (
+          <View style={[styles.homeNotification, styles.homeNotificationAndroid]}>
+            {notificationContent}
           </View>
-          <View style={styles.homeNotificationTextContainer}>
-            <Text style={styles.homeNotificationTitle}>Send Safe home</Text>
-            <Text style={styles.homeNotificationSubtitle}>You are safely home.</Text>
-          </View>
-        </BlurView>
+        ) : (
+          <BlurView intensity={80} tint="light" style={styles.homeNotification}>
+            {notificationContent}
+          </BlurView>
+        )}
       </TouchableOpacity>
     </Animated.View>
   );
@@ -68,11 +82,18 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 16,
     borderRadius: 24,
-    backgroundColor: Platform.OS === 'ios' ? COLORS.OVERLAY_WHITE_LIGHT : COLORS.OVERLAY_WHITE_MEDIUM,
+    backgroundColor: COLORS.OVERLAY_WHITE_LIGHT,
     borderWidth: 1,
     borderColor: COLORS.BORDER_WHITE,
     ...SHADOWS.MD,
     overflow: 'hidden',
+  },
+  homeNotificationAndroid: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    elevation: 0, // No elevation to avoid white rectangle artifact
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
   },
   homeNotificationIconCircle: {
     width: 40,

@@ -13,15 +13,26 @@ interface BottomNavBarProps {
   tabs: BottomTab[];
   activeKey: string;
   onTabPress: (key: string) => void;
+  safeAreaBottom?: number;
 }
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   tabs,
   activeKey,
   onTabPress,
+  safeAreaBottom = 0,
 }) => {
+  const isAndroid = Platform.OS === 'android';
+  const isProfile = activeKey === 'PROFILE';
+
   return (
-    <View style={styles.navBar}>
+    <View
+      style={[
+        styles.navBar,
+        isAndroid && styles.navBarAndroid,
+        isAndroid && isProfile && styles.navBarAndroidProfile,
+      ]}
+    >
       {tabs.map(tab => {
         const isActive = tab.key === activeKey;
         const iconName = isActive ? tab.iconFilled : tab.icon;
@@ -62,6 +73,19 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     position: 'relative',
     width: '100%',
+  },
+  navBarAndroid: {
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+    borderTopColor: 'transparent',
+    elevation: 0,
+  },
+  navBarAndroidProfile: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 0,
+    borderTopColor: 'transparent',
+    elevation: 0,
+    shadowColor: 'transparent',
   },
   navBtn: {
     alignItems: 'center',

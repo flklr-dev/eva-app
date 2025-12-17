@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
@@ -71,7 +71,72 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
             },
           ]}
         >
-          <BlurView intensity={60} tint="light" style={styles.modalContent}>
+          {Platform.OS === 'ios' ? (
+            <BlurView intensity={60} tint="light" style={styles.modalContent}>
+              {/* Header */}
+              <View style={styles.header}>
+                <Text style={styles.headerText}>Invite new contact</Text>
+              </View>
+
+              {/* Separator */}
+              <View style={styles.separator} />
+
+              {/* Options */}
+              <View style={styles.optionsContainer}>
+                {/* Share Option */}
+                <TouchableOpacity
+                  style={styles.option}
+                  onPress={() => {
+                    onShare?.();
+                    onClose();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name="share-variant"
+                    size={20}
+                    color={COLORS.TEXT_PRIMARY}
+                  />
+                  <Text style={styles.optionText}>Share</Text>
+                </TouchableOpacity>
+
+                {/* Message Option */}
+                <TouchableOpacity
+                  style={styles.option}
+                  onPress={() => {
+                    onMessage?.();
+                    onClose();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name="message-text"
+                    size={20}
+                    color={COLORS.TEXT_PRIMARY}
+                  />
+                  <Text style={styles.optionText}>Message</Text>
+                </TouchableOpacity>
+
+                {/* Scan Option */}
+                <TouchableOpacity
+                  style={styles.option}
+                  onPress={() => {
+                    onScan?.();
+                    onClose();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name="qrcode-scan"
+                    size={20}
+                    color={COLORS.TEXT_PRIMARY}
+                  />
+                  <Text style={styles.optionText}>Scan</Text>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          ) : (
+            <View style={[styles.modalContent, styles.modalContentAndroid]}>
             {/* Header */}
             <View style={styles.header}>
               <Text style={styles.headerText}>Invite new contact</Text>
@@ -133,7 +198,8 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
                 <Text style={styles.optionText}>Scan</Text>
               </TouchableOpacity>
             </View>
-          </BlurView>
+            </View>
+          )}
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
@@ -155,6 +221,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.BORDER_WHITE,
     ...SHADOWS.LG,
+  },
+  modalContentAndroid: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderColor: 'rgba(0,0,0,0.06)',
+    ...Platform.select({
+      android: { elevation: 6, shadowColor: 'rgba(0,0,0,0.12)', shadowOpacity: 0.12, shadowRadius: 6 },
+      ios: {},
+      default: {},
+    }),
   },
   header: {
     paddingVertical: SPACING.MD,

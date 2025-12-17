@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { View, TouchableOpacity, Animated, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, Animated, StyleSheet, Platform } from 'react-native';
 import { ANIMATION_CONFIG, COLORS, SIZES } from '../constants/theme';
 
 interface ToggleSwitchProps {
@@ -29,7 +29,15 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
 
   return (
     <TouchableOpacity
-      style={[styles.toggleSwitch, value && styles.toggleSwitchActive]}
+      style={[
+        styles.toggleSwitch,
+        value && styles.toggleSwitchActive,
+        Platform.select({
+          android: { elevation: 2, shadowColor: 'transparent' },
+          ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 2 },
+          default: {},
+        }),
+      ]}
       onPress={() => !disabled && onValueChange(!value)}
       activeOpacity={0.7}
       disabled={disabled}

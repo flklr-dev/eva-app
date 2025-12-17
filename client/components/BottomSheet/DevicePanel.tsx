@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Switch, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../constants/theme';
 
@@ -156,10 +156,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.MD,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderWidth: 1,
-    borderColor: COLORS.BORDER_WHITE,
     overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        backgroundColor: 'rgba(255, 255, 255, 0.6)',
+        borderWidth: 1,
+        borderColor: COLORS.BORDER_WHITE,
+      },
+      android: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.08)',
+        elevation: 6,
+        shadowColor: 'rgba(0,0,0,0.12)',
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 4 },
+      },
+      default: {},
+    }),
   },
   connectDeviceContainer: {
     flexDirection: 'row',
@@ -230,7 +245,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: Platform.select({ ios: 'rgba(255, 255, 255, 0.5)', android: '#FFFFFF', default: '#FFFFFF' }),
     borderRadius: BORDER_RADIUS.LG,
     padding: SPACING.MD,
     paddingHorizontal: SPACING.XL,
