@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Modal, Dimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
-import { COLORS, SPACING, BORDER_RADIUS } from '../../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+
+const { width } = Dimensions.get('window');
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export const ProfileTab: React.FC = () => {
+  const navigation = useNavigation<NavigationProp>();
   const { logout, user } = useAuth();
   const insets = useSafeAreaInsets();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -13,6 +21,8 @@ export const ProfileTab: React.FC = () => {
   const [editedName, setEditedName] = useState(user?.name || '');
   const [editedEmail, setEditedEmail] = useState(user?.email || '');
   const [hasChanges, setHasChanges] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
 
   // Track changes
   useEffect(() => {
@@ -48,8 +58,7 @@ export const ProfileTab: React.FC = () => {
   };
 
   const handleHomeSettings = () => {
-    console.log('Home settings pressed');
-    // TODO: Implement home settings functionality
+    navigation.navigate('ADD_TO_HOME');
   };
 
   const handlePrivacySettings = () => {
@@ -57,9 +66,18 @@ export const ProfileTab: React.FC = () => {
     // TODO: Implement privacy settings functionality
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setLogoutModalVisible(true);
+  };
+
+  const handleCloseLogoutModal = () => {
+    setLogoutModalVisible(false);
+  };
+
+  const handleConfirmLogout = async () => {
     try {
       setIsLoggingOut(true);
+      setLogoutModalVisible(false);
       await logout();
     } catch (error) {
       console.error('Logout failed:', error);
@@ -68,8 +86,17 @@ export const ProfileTab: React.FC = () => {
   };
 
   const handleDeleteAccount = () => {
-    console.log('Delete account pressed');
+    setDeleteModalVisible(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    setDeleteModalVisible(false);
+  };
+
+  const handleConfirmDelete = () => {
     // TODO: Implement delete account functionality
+    console.log('Delete account confirmed');
+    setDeleteModalVisible(false);
   };
 
   const userInitials = user?.name
@@ -229,11 +256,93 @@ export const ProfileTab: React.FC = () => {
               activeOpacity={0.7}
             >
               <MaterialCommunityIcons name="logout" size={20} color={COLORS.ERROR} />
-              <Text style={styles.logoutText}>{isLoggingOut ? 'Logging Out...' : 'Log Out'}</Text>
+              <Text style={styles.logoutText}>Log Out</Text>
             </TouchableOpacity>
           </View>
         )}
       </ScrollView>
+
+      {/* Delete Account Modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseDeleteModal}
+        statusBarTranslucent
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={handleCloseDeleteModal}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={styles.modalContainer}
+          >
+            <View style={styles.modalContent}>
+              {/* Title */}
+              <Text style={styles.modalTitle}>Delete account</Text>
+
+              {/* Subtitle */}
+              <Text style={styles.modalSubtitle}>Are you sure you want to delete your account?</Text>
+
+              {/* Horizontal Line */}
+              <View style={styles.modalSeparator} />
+
+              {/* Yes Delete Button */}
+              <TouchableOpacity
+                style={styles.modalDeleteButton}
+                onPress={handleConfirmDelete}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalDeleteButtonText}>Yes delete</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Logout Modal */}
+      <Modal
+        visible={logoutModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseLogoutModal}
+        statusBarTranslucent
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={handleCloseLogoutModal}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={styles.modalContainer}
+          >
+            <View style={styles.modalContent}>
+              {/* Title */}
+              <Text style={styles.modalTitle}>Log out</Text>
+
+              {/* Subtitle */}
+              <Text style={styles.modalSubtitle}>Are you sure you want to log out?</Text>
+
+              {/* Horizontal Line */}
+              <View style={styles.modalSeparator} />
+
+              {/* Yes Logout Button */}
+              <TouchableOpacity
+                style={styles.modalLogoutButton}
+                onPress={handleConfirmLogout}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalLogoutButtonText}>Yes log out</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -534,6 +643,65 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.ERROR,
     marginLeft: SPACING.SM,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: width - 80,
+    maxWidth: 320,
+  },
+  modalContent: {
+    borderRadius: BORDER_RADIUS.MD,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.BORDER_WHITE,
+    backgroundColor: '#F2F2F2',
+    ...SHADOWS.LG,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.MD,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: COLORS.TEXT_SECONDARY,
+    paddingHorizontal: SPACING.MD,
+    paddingBottom: SPACING.MD,
+    textAlign: 'center',
+  },
+  modalSeparator: {
+    height: 1,
+    backgroundColor: COLORS.BORDER_OPACITY,
+    marginHorizontal: SPACING.SM,
+  },
+  modalDeleteButton: {
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.MD,
+    alignItems: 'center',
+  },
+  modalDeleteButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF', // System blue color
+  },
+  modalLogoutButton: {
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.MD,
+    alignItems: 'center',
+  },
+  modalLogoutButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF', // System blue color
   },
 });
 

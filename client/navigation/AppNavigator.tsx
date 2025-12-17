@@ -6,6 +6,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { SplashScreen } from '../screens/SplashScreen';
+import { AddToHomeScreen } from '../screens/AddToHomeScreen';
 import { preloadImages } from '../utils/imageCache';
 import { useAuth } from '../context/AuthContext';
 
@@ -14,6 +15,7 @@ export type RootStackParamList = {
   LOGIN: undefined;
   REGISTER: undefined;
   HOME: undefined;
+  ADD_TO_HOME: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -72,7 +74,10 @@ export const AppNavigator: React.FC = () => {
             </Stack.Screen>
           </>
         ) : (
-          <Stack.Screen name="HOME" component={HomeScreen} />
+          <>
+            <Stack.Screen name="HOME" component={HomeScreen} />
+            <Stack.Screen name="ADD_TO_HOME" component={AddToHomeScreen} />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>
