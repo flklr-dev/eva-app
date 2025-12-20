@@ -24,7 +24,7 @@ import { useHomeNotification } from '../hooks/useHomeNotification';
 import { useQuickActionMode } from '../hooks/useQuickActionMode';
 import type { QuickActionKey, HomeStatus } from '../types/quickActions';
 import { QuickActionButton } from '../components/QuickActions';
-import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
+import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, FriendRequestsPanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
 import {
   StatusChip,
   BluetoothIndicator,
@@ -39,6 +39,9 @@ import { ProfileTab } from '../components/ProfileTab';
 import { Friend, FriendWithDistance } from '../types/friends';
 import { Activity } from '../types/activity';
 import { calculateDistance } from '../utils/distanceCalculator';
+import { shareFriendInvite } from '../utils/shareUtils';
+import { QRCodeDisplay } from '../components/QRCodeDisplay';
+import { getFriendRequests, getFriendsWithToken } from '../services/friendService';
 
 const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
@@ -60,12 +63,7 @@ const PlaceholderTab: React.FC<{ name: string }> = ({ name }) => (
 );
 
 // Mock friend data - Located near Mati City, Davao Oriental
-const mockFriends: Friend[] = [
-  { id: 'friend-1', name: 'Emma', country: 'Philippines', coordinate: { latitude: 6.952, longitude: 126.222 }, status: 'online' },
-  { id: 'friend-2', name: 'Lucas', country: 'Philippines', coordinate: { latitude: 6.948, longitude: 126.218 }, status: 'online' },
-  { id: 'friend-3', name: 'Maya', country: 'Philippines', coordinate: { latitude: 6.955, longitude: 126.225 }, status: 'online' },
-  { id: 'friend-4', name: 'Alex', country: 'Philippines', coordinate: { latitude: 6.950, longitude: 126.220 }, status: 'online' },
-];
+// Mock friends removed - now using real API data
 
 // Mock activity data
 const mockActivities: Activity[] = [
@@ -107,13 +105,7 @@ const mockActivities: Activity[] = [
   },
 ];
 
-// Convert to markers format for LocationTab
-const friendMarkers: Array<{ id: string; coordinate: LatLng; name: string; status: string }> = mockFriends.map(friend => ({
-  id: friend.id,
-  coordinate: friend.coordinate,
-  name: friend.name,
-  status: friend.status,
-}));
+// Friend markers will be generated from friendsWithDistance state
 
 // ACTION_BUTTONS now imported from constants/quickActions.ts
 
@@ -126,6 +118,7 @@ const LocationTab: React.FC<{
   onUserLocationChange?: (location: { latitude: number; longitude: number } | null) => void;
   onLocationPermissionChange?: (granted: boolean) => void;
   sharedInitialRegion?: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+  friends?: FriendWithDistance[];
 }> = ({ 
   showHomeNotification = false, 
   homeNotificationAnim, 
@@ -135,8 +128,9 @@ const LocationTab: React.FC<{
   onUserLocationChange,
   onLocationPermissionChange,
   sharedInitialRegion,
+  friends = [],
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
   const [isNotified, setIsNotified] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -364,7 +358,12 @@ const LocationTab: React.FC<{
             initialRegion={initialRegion}
             showsUserLocation={locationPermissionGranted}
             userLocation={userLocation}
-            markers={friendMarkers}
+            markers={friends.map((friend: FriendWithDistance) => ({
+              id: friend.id,
+              coordinate: friend.coordinate,
+              name: friend.name,
+              status: friend.status,
+            }))}
           />
         )}
 
@@ -381,7 +380,7 @@ const LocationTab: React.FC<{
 
             <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
               <StatusChip
-                friendCount={friendMarkers.length}
+                friendCount={friends.length}
                 onDropdownPress={() => console.log('Dropdown pressed')}
               />
               <BluetoothIndicator isConnected={isBluetoothConnected} />
@@ -411,6 +410,7 @@ const LocationTab: React.FC<{
 export const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState('LOCATION');
   const insets = useSafeAreaInsets();
+  const { token, user } = useAuth();
   
   // Shared user location state - used by all tabs for consistent map view
   const [sharedUserLocation, setSharedUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -435,20 +435,9 @@ export const HomeScreen: React.FC = () => {
     };
   }, [sharedUserLocation]);
   
-  // Friends with distance state (updated by FriendsTab when GPS location is available)
-  const [friendsWithDistance, setFriendsWithDistance] = useState<FriendWithDistance[]>(() => {
-    // Initial calculation with default location
-    const defaultLocation = { latitude: 6.950, longitude: 126.220 };
-    return mockFriends.map(friend => ({
-      ...friend,
-      distance: calculateDistance(
-        defaultLocation.latitude,
-        defaultLocation.longitude,
-        friend.coordinate.latitude,
-        friend.coordinate.longitude
-      ),
-    }));
-  });
+  // Friends with distance state (loaded from API)
+  const [friendsWithDistance, setFriendsWithDistance] = useState<FriendWithDistance[]>([]);
+  const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   
   const handleFriendsWithDistanceChange = (friends: FriendWithDistance[]) => {
     setFriendsWithDistance(friends);
@@ -616,19 +605,143 @@ export const HomeScreen: React.FC = () => {
     // TODO: Implement add friend functionality
   };
 
-  const handleShareFriend = () => {
-    console.log('Share friend pressed');
-    // TODO: Implement share friend functionality
+  // QR Code Display state
+  const [showQRCode, setShowQRCode] = useState(false);
+
+  const handleShareFriend = async () => {
+    try {
+      // Get current user from auth context
+      if (!user || !user.id) {
+        Alert.alert('Error', 'Unable to get user information');
+        return;
+      }
+      
+      console.log('[Share] Opening share sheet for user:', user.id, user.name);
+      
+      // Open native OS share sheet with friend invite link
+      await shareFriendInvite(user.id, user.name);
+      
+      console.log('[Share] Share sheet opened successfully');
+    } catch (error: any) {
+      console.error('[Share] Error in handleShareFriend:', error);
+      // Only show alert if it's not a user cancellation
+      if (error?.message && !error.message.includes('cancelled') && !error.message.includes('dismissed')) {
+        Alert.alert('Error', 'Failed to open share sheet. Please try again.');
+      }
+    }
   };
 
   const handleMessageFriend = () => {
+    // TODO: Implement message friend functionality (open messaging)
     console.log('Message friend pressed');
-    // TODO: Implement message friend functionality
+    Alert.alert('Coming Soon', 'Messaging feature will be available soon');
   };
 
   const handleScanFriend = () => {
-    console.log('Scan friend QR code pressed');
-    // TODO: Implement scan QR code functionality
+    // Now shows QR code instead of scanner
+    setShowQRCode(true);
+  };
+
+  const handleShowQRCode = () => {
+    setShowQRCode(true);
+  };
+
+  // Friend Requests state
+  const [showFriendRequests, setShowFriendRequests] = useState(false);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+
+  // Load pending friend requests count
+  const loadPendingRequestsCount = async () => {
+    if (!user || !token) {
+      console.log('[FriendRequests] Skipping load - no user or token');
+      return;
+    }
+    
+    try {
+      console.log('[FriendRequests] Loading pending requests count...');
+      // Pass token from context to avoid AsyncStorage timing issues
+      const data = await getFriendRequests(token);
+      const receivedPending = data.received.filter(r => r.status === 'pending');
+      setPendingRequestsCount(receivedPending.length);
+      console.log('[FriendRequests] Pending requests count:', receivedPending.length);
+    } catch (error: any) {
+      console.error('[FriendRequests] Error loading pending requests count:', error);
+      // Don't show error to user, just log it - might be auth timing issue
+      if (error?.message?.includes('Not authenticated')) {
+        console.warn('[FriendRequests] Auth token not ready yet, will retry');
+      }
+    }
+  };
+
+  // Load friends list from API
+  const loadFriends = async () => {
+    if (!user || !token) {
+      console.log('[Friends] Skipping load - no user or token');
+      return;
+    }
+
+    try {
+      setIsLoadingFriends(true);
+      console.log('[Friends] Loading friends from API...', { userId: user.id, hasToken: !!token });
+      
+      // Use token from context directly instead of AsyncStorage
+      const friends = await getFriendsWithToken(token);
+      console.log('[Friends] Loaded friends:', friends.length);
+
+      // Transform API response to FriendWithDistance format
+      const userLocation = sharedUserLocation || { latitude: 6.950, longitude: 126.220 };
+      
+      const friendsWithDistanceData: FriendWithDistance[] = friends.map((friend) => {
+        // Use default location if friend doesn't have location data
+        // TODO: Get actual location from friend's lastKnownLocation when available
+        const friendLocation = { latitude: 6.950, longitude: 126.220 };
+        
+        return {
+          id: friend.id,
+          name: friend.name,
+          email: friend.email,
+          profilePicture: friend.profilePicture,
+          country: 'Unknown', // API doesn't return country yet
+          status: friend.isActive ? 'online' : 'offline',
+          coordinate: {
+            latitude: friendLocation.latitude,
+            longitude: friendLocation.longitude,
+          },
+          distance: calculateDistance(
+            userLocation.latitude,
+            userLocation.longitude,
+            friendLocation.latitude,
+            friendLocation.longitude
+          ),
+        };
+      });
+
+      setFriendsWithDistance(friendsWithDistanceData);
+    } catch (error: any) {
+      console.error('[Friends] Error loading friends:', error);
+      // Set empty array on error to show empty state
+      setFriendsWithDistance([]);
+    } finally {
+      setIsLoadingFriends(false);
+    }
+  };
+
+  // Load friends and requests count when Friends tab is active
+  useEffect(() => {
+    if (activeTab === 'FRIENDS' && user && token) {
+      // Add small delay to ensure token is fully available
+      const timer = setTimeout(() => {
+        loadFriends();
+        loadPendingRequestsCount();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, user, token, sharedUserLocation]);
+
+  // Refresh friends list when a request is accepted
+  const handleRequestAccepted = () => {
+    loadPendingRequestsCount();
+    loadFriends(); // Reload friends list after accepting request
   };
 
   const renderContent = () => {
@@ -643,12 +756,13 @@ export const HomeScreen: React.FC = () => {
           onUserLocationChange={setSharedUserLocation}
           onLocationPermissionChange={setSharedLocationPermissionGranted}
           sharedInitialRegion={sharedInitialRegion}
+          friends={friendsWithDistance}
         />
       );
       case 'FRIENDS': return (
         <FriendsTab 
           ref={friendsTabRef} 
-          friends={mockFriends} 
+          friends={friendsWithDistance} 
           isBluetoothConnected={isBluetoothConnected} 
           onFriendsWithDistanceChange={handleFriendsWithDistanceChange} 
           onFriendPress={handleFriendPress}
@@ -661,7 +775,7 @@ export const HomeScreen: React.FC = () => {
       );
       case 'ACTIVITY': return (
         <ActivityTab 
-          friends={mockFriends} 
+          friends={friendsWithDistance} 
           isBluetoothConnected={isBluetoothConnected}
           sharedUserLocation={sharedUserLocation}
           sharedLocationPermissionGranted={sharedLocationPermissionGranted}
@@ -670,7 +784,7 @@ export const HomeScreen: React.FC = () => {
       );
       case 'DEVICE': return (
         <DeviceTab 
-          friends={mockFriends} 
+          friends={friendsWithDistance} 
           isBluetoothConnected={isBluetoothConnected}
           sharedUserLocation={sharedUserLocation}
           sharedLocationPermissionGranted={sharedLocationPermissionGranted}
@@ -688,6 +802,7 @@ export const HomeScreen: React.FC = () => {
           onUserLocationChange={setSharedUserLocation}
           onLocationPermissionChange={setSharedLocationPermissionGranted}
           sharedInitialRegion={sharedInitialRegion}
+          friends={friendsWithDistance}
         />
       );
     }
@@ -735,7 +850,7 @@ export const HomeScreen: React.FC = () => {
              )}
 
              {/* Friends List Panel - Shown when Friends tab is active */}
-             {activeTab === 'FRIENDS' && (
+             {activeTab === 'FRIENDS' && !showFriendRequests && (
                <FriendsListPanel
                  friends={friendsWithDistance}
                  onAddFriend={handleAddFriend}
@@ -743,6 +858,18 @@ export const HomeScreen: React.FC = () => {
                  onShare={handleShareFriend}
                  onMessage={handleMessageFriend}
                  onScan={handleScanFriend}
+                 pendingRequestsCount={pendingRequestsCount}
+                 onShowRequests={() => setShowFriendRequests(true)}
+                 isLoading={isLoadingFriends}
+               />
+             )}
+
+             {/* Friend Requests Panel - Shown when user clicks on requests badge */}
+             {activeTab === 'FRIENDS' && showFriendRequests && (
+               <FriendRequestsPanel
+                 visible={showFriendRequests}
+                 onClose={() => setShowFriendRequests(false)}
+                 onRequestAccepted={handleRequestAccepted}
                />
              )}
 
@@ -846,6 +973,16 @@ export const HomeScreen: React.FC = () => {
         </View>
       </View>
       </SafeAreaView>
+      
+      {/* QR Code Display Modal */}
+      {user && (
+        <QRCodeDisplay
+          visible={showQRCode}
+          onClose={() => setShowQRCode(false)}
+          userId={user.id}
+          userName={user.name}
+        />
+      )}
     </ImageBackground>
   );
 };

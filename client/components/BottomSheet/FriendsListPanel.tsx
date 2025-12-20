@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, Platform, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FriendListItem } from '../FriendsTab/FriendListItem';
 import { FriendWithDistance } from '../../types/friends';
@@ -12,7 +12,10 @@ interface FriendsListPanelProps {
   onFriendPress?: (friend: FriendWithDistance) => void;
   onShare?: () => void;
   onMessage?: () => void;
-  onScan?: () => void;
+  onScan?: () => void; // Now shows QR code instead of scanning
+  pendingRequestsCount?: number;
+  onShowRequests?: () => void;
+  isLoading?: boolean;
 }
 
 /**
@@ -25,6 +28,9 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
   onShare,
   onMessage,
   onScan,
+  pendingRequestsCount = 0,
+  onShowRequests,
+  isLoading = false,
 }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [buttonPosition, setButtonPosition] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -50,7 +56,21 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Friends</Text>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Friends</Text>
+          {pendingRequestsCount > 0 && onShowRequests && (
+            <TouchableOpacity
+              style={styles.requestsButton}
+              onPress={onShowRequests}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons name="account-plus" size={18} color={COLORS.TEXT_PRIMARY} />
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{pendingRequestsCount}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
         <TouchableOpacity
           ref={buttonRef}
           style={styles.addButton}
@@ -67,23 +87,29 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
       >
-        {friends.map((friend, index) => (
-          <View key={friend.id}>
-            <FriendListItem
-              name={friend.name}
-              country={friend.country}
-              profilePicture={friend.profilePicture}
-              distance={friend.distance}
-              onPress={() => onFriendPress?.(friend)}
-            />
-            {index < friends.length - 1 && <View style={styles.separator} />}
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={COLORS.TEXT_PRIMARY} />
+            <Text style={styles.loadingText}>Loading friends...</Text>
           </View>
-        ))}
-        {friends.length === 0 && (
+        ) : friends.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>No friends yet</Text>
             <Text style={styles.emptyStateSubtext}>Tap the + button to add friends</Text>
           </View>
+        ) : (
+          friends.map((friend, index) => (
+            <View key={friend.id}>
+              <FriendListItem
+                name={friend.name}
+                country={friend.country}
+                profilePicture={friend.profilePicture}
+                distance={friend.distance}
+                onPress={() => onFriendPress?.(friend)}
+              />
+              {index < friends.length - 1 && <View style={styles.separator} />}
+            </View>
+          ))
         )}
       </ScrollView>
 
@@ -91,14 +117,15 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
       {friends.length > 0 && <View style={styles.bottomSeparator} />}
 
       {/* Invite Friend Modal */}
-      <InviteFriendModal
-        visible={modalVisible}
-        onClose={handleCloseModal}
-        onShare={onShare}
-        onMessage={onMessage}
-        onScan={onScan}
-        buttonPosition={buttonPosition}
-      />
+        <InviteFriendModal
+          visible={modalVisible}
+          onClose={handleCloseModal}
+          onShare={onShare}
+          onMessage={onMessage}
+          onScan={onScan}
+          onShareAfterClose={onShare}
+          buttonPosition={buttonPosition}
+        />
     </View>
   );
 };
@@ -115,10 +142,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.MD,
   },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+  },
   title: {
     fontSize: 22,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
+  },
+  requestsButton: {
+    position: 'relative',
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: COLORS.BACKGROUND_WHITE,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
   },
   addButton: {
     width: 36,
@@ -166,6 +224,16 @@ const styles = StyleSheet.create({
   emptyStateSubtext: {
     fontSize: 14,
     fontWeight: '400',
+    color: COLORS.TEXT_SECONDARY,
+  },
+  loadingContainer: {
+    paddingVertical: SPACING.XL * 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: SPACING.MD,
+    fontSize: 14,
     color: COLORS.TEXT_SECONDARY,
   },
 });

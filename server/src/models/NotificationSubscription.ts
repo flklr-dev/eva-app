@@ -19,6 +19,7 @@ const NotificationSubscriptionSchema = new Schema<INotificationSubscription>({
     type: String,
     required: true,
     unique: true,
+    sparse: true, // Allow multiple null values but unique non-null values
   },
   deviceType: {
     type: String,
@@ -40,9 +41,8 @@ const NotificationSubscriptionSchema = new Schema<INotificationSubscription>({
   timestamps: true,
 });
 
-// Index for faster queries
+// Index for faster queries (pushToken already has unique index from unique: true)
 NotificationSubscriptionSchema.index({ userId: 1, isActive: 1 });
-NotificationSubscriptionSchema.index({ pushToken: 1 });
 
 export const NotificationSubscription = mongoose.model<INotificationSubscription>(
   'NotificationSubscription',

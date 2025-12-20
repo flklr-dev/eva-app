@@ -11,8 +11,9 @@ interface InviteFriendModalProps {
   onClose: () => void;
   onShare?: () => void;
   onMessage?: () => void;
-  onScan?: () => void;
+  onScan?: () => void; // Now shows QR code instead of scanning
   buttonPosition?: { x: number; y: number; width: number; height: number } | null;
+  onShareAfterClose?: () => void; // Callback to call after modal is fully closed
 }
 
 /**
@@ -25,6 +26,7 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
   onMessage,
   onScan,
   buttonPosition,
+  onShareAfterClose,
 }) => {
   // Calculate modal position (right side, directly above the button)
   const modalWidth = 200;
@@ -87,8 +89,19 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
                 <TouchableOpacity
                   style={styles.option}
                   onPress={() => {
-                    onShare?.();
+                    // Close modal first, then call share after a delay
+                    // iOS share sheet cannot appear over a modal
                     onClose();
+                    if (onShareAfterClose) {
+                      // Use requestAnimationFrame to ensure modal is fully dismissed
+                      requestAnimationFrame(() => {
+                        setTimeout(() => {
+                          onShareAfterClose();
+                        }, 300); // Wait for modal animation to complete
+                      });
+                    } else {
+                      onShare?.();
+                    }
                   }}
                   activeOpacity={0.7}
                 >
@@ -117,7 +130,7 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
                   <Text style={styles.optionText}>Message</Text>
                 </TouchableOpacity>
 
-                {/* Scan Option */}
+                {/* Scan Option - Now shows QR code */}
                 <TouchableOpacity
                   style={styles.option}
                   onPress={() => {
@@ -127,7 +140,7 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
                   activeOpacity={0.7}
                 >
                   <MaterialCommunityIcons
-                    name="qrcode-scan"
+                    name="qrcode"
                     size={20}
                     color={COLORS.TEXT_PRIMARY}
                   />
@@ -151,8 +164,19 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
               <TouchableOpacity
                 style={styles.option}
                 onPress={() => {
-                  onShare?.();
+                  // Close modal first, then call share after a delay
+                  // iOS share sheet cannot appear over a modal
                   onClose();
+                  if (onShareAfterClose) {
+                    // Use requestAnimationFrame to ensure modal is fully dismissed
+                    requestAnimationFrame(() => {
+                      setTimeout(() => {
+                        onShareAfterClose();
+                      }, 300); // Wait for modal animation to complete
+                    });
+                  } else {
+                    onShare?.();
+                  }
                 }}
                 activeOpacity={0.7}
               >
@@ -181,7 +205,7 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
                 <Text style={styles.optionText}>Message</Text>
               </TouchableOpacity>
 
-              {/* Scan Option */}
+              {/* Scan Option - Now shows QR code */}
               <TouchableOpacity
                 style={styles.option}
                 onPress={() => {
@@ -191,7 +215,7 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
                 activeOpacity={0.7}
               >
                 <MaterialCommunityIcons
-                  name="qrcode-scan"
+                  name="qrcode"
                   size={20}
                   color={COLORS.TEXT_PRIMARY}
                 />
