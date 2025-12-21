@@ -20,6 +20,7 @@ interface AuthContextType {
   isInitializing: boolean;
   isAuthenticated: boolean;
   pendingAuth: PendingAuth | null;
+  setUser: (user: User | null) => void;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -146,6 +147,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isInitializing,
     isAuthenticated: !!token && !!user,
     pendingAuth,
+    setUser,
     login: handleLogin,
     register: handleRegister,
     logout: handleLogout,

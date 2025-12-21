@@ -7,6 +7,7 @@ import authRoutes from './routes/authRoutes';
 import adminAuthRoutes from './routes/adminAuthRoutes';
 import notificationRoutes from './routes/notifications';
 import friendRoutes from './routes/friendRoutes';
+import profileRoutes from './routes/profileRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -307,11 +308,34 @@ app.use('/api/auth', authRoutes);
 app.use('/api/friends', friendRoutes);
 console.log('✓ Friend routes registered at /api/friends');
 
+// Profile Routes
+app.use('/api/profile', profileRoutes);
+console.log('✓ Profile routes registered at /api/profile');
+
 // Notification Routes
 app.use('/api/notifications', notificationRoutes);
 
 // Admin Auth Routes
 app.use('/api/admin/auth', adminAuthRoutes);
+
+// Get network IP address
+const getNetworkIP = (): string => {
+  const { networkInterfaces } = require('os');
+  const nets = networkInterfaces();
+
+  for (const name of Object.keys(nets)) {
+    const net = nets[name];
+    if (net) {
+      for (const netInfo of net) {
+        // Skip internal and non-IPv4 addresses
+        if (netInfo.family === 'IPv4' && !netInfo.internal && netInfo.address.startsWith('192.168.')) {
+          return netInfo.address;
+        }
+      }
+    }
+  }
+  return 'localhost'; // fallback
+};
 
 // Connect to database and start server
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -320,8 +344,9 @@ const HOST = '0.0.0.0';
 
 connectDB().then(() => {
   app.listen(PORT, HOST, () => {
+    const networkIP = getNetworkIP();
     console.log(`✓ Server started on http://localhost:${PORT}`);
-    console.log(`✓ Server accessible on network at http://192.168.1.84:${PORT}`);
+    console.log(`✓ Server accessible on network at http://${networkIP}:${PORT}`);
     console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }).catch((error) => {

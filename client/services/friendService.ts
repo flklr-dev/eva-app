@@ -12,7 +12,7 @@ const getAuthToken = async (tokenFromContext?: string | null): Promise<string | 
   
   // Otherwise, try to get from AsyncStorage
   try {
-    return await AsyncStorage.getItem('authToken');
+    return await AsyncStorage.getItem('auth_token');
   } catch (error) {
     console.error('Error getting auth token:', error);
     return null;

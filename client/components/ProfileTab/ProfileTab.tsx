@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Modal, Dimensions, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Modal, Dimensions, useWindowDimensions, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { updateProfile, deleteAccount } from '../../services/profileService';
 
 const { width } = Dimensions.get('window');
 
@@ -14,7 +15,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export const ProfileTab: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const { logout, user } = useAuth();
+  const { logout, user, token, setUser } = useAuth();
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const isSmall = winW < 360;
@@ -65,11 +66,67 @@ export const ProfileTab: React.FC = () => {
     setEditedEmail(user?.email || '');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!hasChanges) return;
-    // TODO: Implement save functionality
-    console.log('Saving profile:', { name: editedName, email: editedEmail });
-    setIsEditMode(false);
+
+    console.log('[ProfileTab] handleSave called');
+    console.log('[ProfileTab] Current user:', user);
+    console.log('[ProfileTab] Token available:', !!token);
+
+    // Client-side validation
+    if (editedName.trim().length === 0) {
+      Alert.alert('Error', 'Name cannot be empty');
+      return;
+    }
+
+    if (editedName.trim().length < 2) {
+      Alert.alert('Error', 'Name must be at least 2 characters long');
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(editedEmail)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    try {
+      // Prepare update data
+      const updateData: any = {};
+      if (editedName !== user?.name) updateData.name = editedName;
+      if (editedEmail !== user?.email) updateData.email = editedEmail;
+
+      console.log('[ProfileTab] Prepared update data:', updateData);
+      console.log('[ProfileTab] Calling updateProfile...');
+
+      // Make API call
+      const updatedUser = await updateProfile(updateData, token);
+
+      console.log('[ProfileTab] Profile update successful, returned user:', updatedUser);
+
+      // Update the user data in AuthContext for real-time UI updates
+      if (setUser && updatedUser) {
+        setUser(updatedUser);
+      }
+
+      // Update local edit state
+      setIsEditMode(false);
+
+      // Show success message
+      Alert.alert('Success', 'Profile updated successfully');
+    } catch (error) {
+      console.error('[ProfileTab] Failed to save profile:', error);
+      console.error('[ProfileTab] Error details:', error);
+
+      // Show user-friendly error message
+      let errorMessage = 'Failed to update profile';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+
+      Alert.alert('Error', errorMessage);
+    }
   };
 
   const handleHomeSettings = () => {
@@ -108,10 +165,20 @@ export const ProfileTab: React.FC = () => {
     setDeleteModalVisible(false);
   };
 
-  const handleConfirmDelete = () => {
-    // TODO: Implement delete account functionality
-    console.log('Delete account confirmed');
-    setDeleteModalVisible(false);
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteAccount();
+
+      // Logout user after account deletion
+      await logout();
+
+      setDeleteModalVisible(false);
+      Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      setDeleteModalVisible(false);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account');
+    }
   };
 
   const userInitials = user?.name
