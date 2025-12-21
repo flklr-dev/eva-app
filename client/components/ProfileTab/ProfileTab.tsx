@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Modal, Dimensions, useWindowDimensions, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Modal, Dimensions, useWindowDimensions, Alert, Image, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -7,7 +7,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
-import { updateProfile, deleteAccount } from '../../services/profileService';
+import { updateProfile, deleteAccount, uploadProfilePicture } from '../../services/profileService';
+import * as ImagePicker from 'expo-image-picker';
+import * as Linking from 'expo-linking';
 
 const { width } = Dimensions.get('window');
 
@@ -39,13 +41,16 @@ export const ProfileTab: React.FC = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [isUploadingPicture, setIsUploadingPicture] = useState(false);
+  const [selectedProfilePictureUri, setSelectedProfilePictureUri] = useState<string | null>(null);
 
   // Track changes
   useEffect(() => {
     const nameChanged = editedName !== (user?.name || '');
     const emailChanged = editedEmail !== (user?.email || '');
-    setHasChanges(nameChanged || emailChanged);
-  }, [editedName, editedEmail, user]);
+    const profilePictureChanged = selectedProfilePictureUri !== null;
+    setHasChanges(nameChanged || emailChanged || profilePictureChanged);
+  }, [editedName, editedEmail, selectedProfilePictureUri, user]);
 
   // Reset form when exiting edit mode
   useEffect(() => {
@@ -64,6 +69,172 @@ export const ProfileTab: React.FC = () => {
     setIsEditMode(false);
     setEditedName(user?.name || '');
     setEditedEmail(user?.email || '');
+    setSelectedProfilePictureUri(null);
+  };
+
+  const openAppSettings = async () => {
+    console.log('[ProfileTab] Opening app settings...');
+
+    try {
+      // Try Expo's Linking.openSettings() first (available in SDK 39+)
+      if (typeof Linking.openSettings === 'function') {
+        console.log('[ProfileTab] Using Linking.openSettings()');
+        await Linking.openSettings();
+        return;
+      }
+
+      // Fallback to platform-specific URLs
+      if (Platform.OS === 'ios') {
+        console.log('[ProfileTab] Using iOS app-settings URL');
+        const canOpen = await Linking.canOpenURL('app-settings:');
+        if (canOpen) {
+          await Linking.openURL('app-settings:');
+        } else {
+          throw new Error('Cannot open iOS settings');
+        }
+      } else if (Platform.OS === 'android') {
+        console.log('[ProfileTab] Using Android settings URL');
+        // Try different Android settings URLs
+        const androidUrls = [
+          'app-settings:', // Generic app settings
+          'package:com.eva.alert', // Direct package
+        ];
+
+        for (const url of androidUrls) {
+          try {
+            const canOpen = await Linking.canOpenURL(url);
+            if (canOpen) {
+              await Linking.openURL(url);
+              return;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        throw new Error('Cannot open Android settings');
+      }
+    } catch (error) {
+      console.error('[ProfileTab] Error opening settings:', error);
+      // Provide manual instructions
+      const instructions = Platform.OS === 'ios'
+        ? 'Settings → EVA Alert → Photos'
+        : 'Settings → Apps → EVA Alert → Permissions → Photos';
+
+      Alert.alert(
+        'Open Settings Manually',
+        `Please go to: ${instructions}`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const requestPermissionsAndPickImage = async () => {
+    console.log('[ProfileTab] Requesting media library permissions...');
+
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('[ProfileTab] Permission result:', permissionResult);
+
+      if (!permissionResult.granted) {
+        console.log('[ProfileTab] Permission denied, showing options');
+        // Show options to try again or go to settings
+        Alert.alert(
+          'Photo Access Required',
+          'To change your profile picture, we need access to your photos. What would you like to do?',
+          [
+            {
+              text: 'Try Again',
+              onPress: () => {
+                console.log('[ProfileTab] User chose Try Again');
+                // Request permissions again after a short delay
+                setTimeout(() => {
+                  requestPermissionsAndPickImage();
+                }, 500);
+              },
+            },
+            {
+              text: 'Go to Settings',
+              onPress: () => {
+                console.log('[ProfileTab] User chose Go to Settings');
+                openAppSettings();
+              },
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                console.log('[ProfileTab] User cancelled permission request');
+              },
+            },
+          ]
+        );
+        return false; // Permission not granted
+      }
+
+      console.log('[ProfileTab] Permission granted, launching image picker...');
+      return true; // Permission granted
+    } catch (error) {
+      console.error('[ProfileTab] Error requesting permissions:', error);
+      Alert.alert('Error', 'Failed to request photo permissions. Please try again.');
+      return false;
+    }
+  };
+
+  const launchImagePicker = async () => {
+    try {
+      console.log('[ProfileTab] Launching image picker...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1], // Square crop
+        quality: 0.8,
+        exif: false, // Don't include EXIF data
+      });
+
+      console.log('[ProfileTab] Image picker result:', result);
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        console.log('[ProfileTab] Selected image:', imageUri);
+
+        // Store the selected image URI (don't upload yet)
+        setSelectedProfilePictureUri(imageUri);
+        return true;
+      } else {
+        console.log('[ProfileTab] Image selection cancelled');
+        return false;
+      }
+    } catch (error) {
+      console.error('[ProfileTab] Image picker error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to select image';
+      Alert.alert('Error', errorMessage);
+      return false;
+    }
+  };
+
+  const handleProfilePicturePress = async () => {
+    console.log('[ProfileTab] handleProfilePicturePress called');
+
+    if (isUploadingPicture) {
+      console.log('[ProfileTab] Already uploading, ignoring request');
+      return;
+    }
+
+    try {
+      // First, request permissions
+      const permissionGranted = await requestPermissionsAndPickImage();
+
+      if (permissionGranted) {
+        // If permission granted, proceed with image picker
+        await launchImagePicker();
+      }
+      // If permission not granted, the requestPermissionsAndPickImage function handles the UI
+    } catch (error) {
+      console.error('[ProfileTab] Profile picture press error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to change profile picture';
+      Alert.alert('Error', errorMessage);
+    }
   };
 
   const handleSave = async () => {
@@ -100,18 +271,41 @@ export const ProfileTab: React.FC = () => {
       console.log('[ProfileTab] Prepared update data:', updateData);
       console.log('[ProfileTab] Calling updateProfile...');
 
-      // Make API call
+      // Make API call for profile data (name/email)
       const updatedUser = await updateProfile(updateData, token);
 
       console.log('[ProfileTab] Profile update successful, returned user:', updatedUser);
 
-      // Update the user data in AuthContext for real-time UI updates
-      if (setUser && updatedUser) {
-        setUser(updatedUser);
+      let finalUser = updatedUser;
+
+      // Upload profile picture if one was selected
+      if (selectedProfilePictureUri) {
+        console.log('[ProfileTab] Uploading profile picture...');
+        setIsUploadingPicture(true);
+
+        try {
+          const uploadResult = await uploadProfilePicture(selectedProfilePictureUri, token);
+          console.log('[ProfileTab] Profile picture upload successful');
+
+          // Update the user object with the new profile picture
+          finalUser = { ...finalUser, profilePicture: uploadResult.profilePicture };
+        } catch (uploadError) {
+          console.error('[ProfileTab] Profile picture upload failed:', uploadError);
+          // Don't fail the entire save operation if profile picture upload fails
+          Alert.alert('Warning', 'Profile updated but profile picture upload failed. You can try uploading the picture again.');
+        } finally {
+          setIsUploadingPicture(false);
+        }
       }
 
-      // Update local edit state
+      // Update the user data in AuthContext for real-time UI updates
+      if (setUser && finalUser) {
+        setUser(finalUser);
+      }
+
+      // Reset form state
       setIsEditMode(false);
+      setSelectedProfilePictureUri(null);
 
       // Show success message
       Alert.alert('Success', 'Profile updated successfully');
@@ -234,13 +428,46 @@ export const ProfileTab: React.FC = () => {
               { marginTop: insets.top + (isSmall ? 120 : 140) },
             ]}>
               <View style={styles.profilePictureWrapper}>
-                <View style={styles.profilePictureContainer}>
-                  <View style={styles.profileInitials}>
-                    <Text style={styles.profileInitialsText}>{userInitials}</Text>
-                  </View>
-                </View>
-                <TouchableOpacity style={styles.editPictureButton}>
-                  <Text style={styles.editPictureButtonText}>Edit</Text>
+                <TouchableOpacity
+                  style={styles.profilePictureContainer}
+                  onPress={handleProfilePicturePress}
+                  disabled={isUploadingPicture}
+                >
+                  {selectedProfilePictureUri ? (
+                    <Image
+                      source={{ uri: selectedProfilePictureUri }}
+                      style={styles.profilePicture}
+                      resizeMode="cover"
+                    />
+                  ) : user?.profilePicture ? (
+                    <Image
+                      source={{ uri: user.profilePicture }}
+                      style={styles.profilePicture}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.profileInitials}>
+                      <Text style={styles.profileInitialsText}>{userInitials}</Text>
+                    </View>
+                  )}
+                  {isUploadingPicture && (
+                    <View style={styles.uploadOverlay}>
+                      <MaterialCommunityIcons
+                        name="loading"
+                        size={20}
+                        color={COLORS.BACKGROUND_WHITE}
+                      />
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.editPictureButton}
+                  onPress={handleProfilePicturePress}
+                  disabled={isUploadingPicture}
+                >
+                  <Text style={styles.editPictureButtonText}>
+                    {isUploadingPicture ? 'Uploading...' : 'Edit'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -281,9 +508,17 @@ export const ProfileTab: React.FC = () => {
             ]}>
               {/* Profile Picture */}
               <View style={styles.profilePictureContainer}>
-                <View style={styles.profileInitials}>
-                  <Text style={styles.profileInitialsText}>{userInitials}</Text>
-                </View>
+                {user?.profilePicture ? (
+                  <Image
+                    source={{ uri: user.profilePicture }}
+                    style={styles.profilePicture}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.profileInitials}>
+                    <Text style={styles.profileInitialsText}>{userInitials}</Text>
+                  </View>
+                )}
               </View>
 
               {/* User Info */}
@@ -579,11 +814,24 @@ const styles = StyleSheet.create({
   profilePictureContainer: {
     marginRight: SPACING.MD,
   },
+  profilePicture: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.PRIMARY,
+  },
   profileInitials: {
     width: 52,
     height: 52,
     borderRadius: 26,
     backgroundColor: COLORS.PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },

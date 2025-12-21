@@ -219,9 +219,99 @@ export const deleteAccount = async (tokenFromContext?: string | null): Promise<{
 };
 
 /**
- * Upload profile picture (placeholder - to be implemented based on storage strategy)
+ * Upload profile picture to Cloudinary
  */
-export const uploadProfilePicture = async (imageFile: File): Promise<{ profilePicture: string }> => {
-  // TODO: Implement based on chosen storage strategy (S3, base64, etc.)
-  throw new Error('Profile picture upload not implemented yet. Choose a storage strategy first.');
+export const uploadProfilePicture = async (imageUri: string, tokenFromContext?: string | null): Promise<{ profilePicture: string }> => {
+  console.log('[profileService] uploadProfilePicture called with imageUri:', imageUri);
+
+  const token = await getAuthToken(tokenFromContext);
+  console.log('[profileService] Using auth token (exists):', !!token);
+
+  const apiUrl = `${getApiBaseUrl()}/api/profile/picture`;
+  console.log('[profileService] Making POST request to:', apiUrl);
+
+  try {
+    // Create FormData for multipart upload
+    const formData = new FormData();
+
+    // Extract filename from URI
+    const filename = imageUri.split('/').pop() || 'profile.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+    formData.append('image', {
+      uri: imageUri,
+      name: filename,
+      type: type,
+    } as any);
+
+    console.log('[profileService] FormData prepared with file:', filename, type);
+
+    const response = await fetch(apiUrl, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        // Don't set Content-Type header - let fetch set it with boundary for FormData
+      },
+      body: formData,
+    });
+
+    console.log('[profileService] Response status:', response.status);
+    console.log('[profileService] Response ok:', response.ok);
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to upload profile picture';
+      let errorDetails = '';
+
+      try {
+        const errorData = await response.json();
+        console.log('[profileService] Error response data:', errorData);
+        errorMessage = errorData.message || errorMessage;
+        errorDetails = errorData.error || '';
+      } catch (parseError) {
+        console.log('[profileService] Could not parse error response:', parseError);
+        // Try to get text content
+        try {
+          const textContent = await response.text();
+          console.log('[profileService] Error response text:', textContent.substring(0, 200));
+          if (textContent) {
+            errorMessage = `Upload failed (${response.status}): ${textContent.substring(0, 100)}`;
+          }
+        } catch (textError) {
+          console.log('[profileService] Could not get error response text:', textError);
+        }
+      }
+
+      // Provide user-friendly error messages
+      if (response.status === 401) {
+        errorMessage = 'Authentication failed. Please log in again.';
+      } else if (response.status === 413) {
+        errorMessage = 'Image file is too large. Please choose a smaller image (max 5MB).';
+      } else if (response.status === 415) {
+        errorMessage = 'Invalid file format. Please choose a valid image file.';
+      } else if (response.status >= 500) {
+        errorMessage = 'Server error. Please try again later.';
+      }
+
+      console.error('[profileService] Throwing error:', errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log('[profileService] Profile picture uploaded successfully:', data);
+
+    return { profilePicture: data.profilePicture };
+
+  } catch (networkError: any) {
+    console.error('[profileService] Network error:', networkError);
+
+    // Handle network errors specifically
+    if (networkError.message === 'Failed to fetch' ||
+        networkError.message.includes('Network request failed') ||
+        networkError.message.includes('fetch')) {
+      throw new Error('Cannot connect to server. Please check your internet connection and make sure the server is running.');
+    }
+
+    throw networkError;
+  }
 };

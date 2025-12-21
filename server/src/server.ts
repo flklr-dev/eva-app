@@ -10,7 +10,21 @@ import friendRoutes from './routes/friendRoutes';
 import profileRoutes from './routes/profileRoutes';
 
 // Load environment variables
-dotenv.config();
+console.log('[Server] Loading environment variables...');
+const dotenvResult = dotenv.config();
+console.log('[Server] dotenv result:', dotenvResult);
+console.log('[Server] CLOUDINARY_CLOUD_NAME after dotenv:', process.env.CLOUDINARY_CLOUD_NAME);
+
+// Initialize Cloudinary after environment variables are loaded
+console.log('[Server] Initializing Cloudinary configuration...');
+try {
+  const { validateConfig } = require('./config/cloudinary');
+  validateConfig();
+  console.log('✓ Cloudinary configuration validated');
+} catch (error) {
+  console.error('✗ Cloudinary configuration error:', error instanceof Error ? error.message : 'Unknown error');
+  console.warn('⚠️ Profile picture upload will not work without proper Cloudinary configuration');
+}
 
 const app = express();
 
@@ -328,7 +342,13 @@ const getNetworkIP = (): string => {
     if (net) {
       for (const netInfo of net) {
         // Skip internal and non-IPv4 addresses
-        if (netInfo.family === 'IPv4' && !netInfo.internal && netInfo.address.startsWith('192.168.')) {
+        // Include common private IP ranges: 192.168.x.x, 10.x.x.x, 172.16-31.x.x
+        if (netInfo.family === 'IPv4' && !netInfo.internal &&
+            (netInfo.address.startsWith('192.168.') ||
+             netInfo.address.startsWith('10.') ||
+             (netInfo.address.startsWith('172.') &&
+              parseInt(netInfo.address.split('.')[1]) >= 16 &&
+              parseInt(netInfo.address.split('.')[1]) <= 31))) {
           return netInfo.address;
         }
       }
@@ -341,6 +361,8 @@ const getNetworkIP = (): string => {
 const PORT = parseInt(process.env.PORT || '3000', 10);
 // In development, listen on all interfaces (0.0.0.0) to accept connections from network
 const HOST = '0.0.0.0';
+
+// Cloudinary configuration is now handled above after dotenv
 
 connectDB().then(() => {
   app.listen(PORT, HOST, () => {

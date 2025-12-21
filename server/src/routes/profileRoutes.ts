@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
+import multer from 'multer';
 import {
   getProfile,
   updateProfile,

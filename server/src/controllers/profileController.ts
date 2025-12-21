@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
+import multer from 'multer';
 import User, { IUser } from '../models/User';
+import { cloudinary } from '../config/cloudinary';
 import {
   getUserProfile,
   updateUserProfile,
@@ -86,15 +88,140 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
 /**
  * Update profile picture (placeholder - to be implemented with storage strategy)
  */
-export const updateProfilePicture = async (req: AuthRequest, res: Response): Promise<void> => {
-  console.log('[Server] PATCH /api/profile/picture - updating profile picture');
+// Configure multer for memory storage (required for Cloudinary)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only image files
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  },
+});
 
-  // TODO: Implement based on chosen storage strategy
-  res.status(501).json({
-    message: 'Profile picture upload not implemented yet',
-    note: 'Choose a storage strategy: S3, base64, or local storage'
-  });
-};
+export const updateProfilePicture = [
+  upload.single('image'),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    console.log('[Server] PATCH /api/profile/picture - updating profile picture');
+
+    try {
+      const userId = req.user?._id.toString()!;
+      const file = req.file;
+
+      console.log('[Server] User ID:', userId);
+      console.log('[Server] File received:', file ? {
+        fieldname: file.fieldname,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        buffer: file.buffer ? `${file.buffer.length} bytes` : 'no buffer'
+      } : 'no file');
+
+      if (!file) {
+        console.log('[Server] No file provided in request');
+        res.status(400).json({ message: 'No image file provided' });
+        return;
+      }
+
+      // Check Cloudinary configuration before upload
+      console.log('[Server] Checking Cloudinary config...');
+      if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+        console.error('[Server] Cloudinary environment variables missing');
+        res.status(500).json({ message: 'Server configuration error', error: 'Cloudinary not configured' });
+        return;
+      }
+
+      // Test Cloudinary connection
+      try {
+        console.log('[Server] Testing Cloudinary connection...');
+        await cloudinary.api.ping();
+        console.log('[Server] Cloudinary connection test successful');
+      } catch (pingError) {
+        console.error('[Server] Cloudinary connection test failed:', pingError);
+        res.status(500).json({
+          message: 'Cloudinary service unavailable',
+          error: 'Cannot connect to Cloudinary API'
+        });
+        return;
+      }
+
+      console.log('[Server] Starting Cloudinary upload...');
+
+      // Upload to Cloudinary with timeout handling
+      const uploadOptions = {
+        folder: 'eva-app/profiles',
+        public_id: `user_${userId}_${Date.now()}`,
+        transformation: [
+          { width: 300, height: 300, crop: 'fill' },
+          { quality: 'auto' }
+        ],
+        timeout: 120000, // 2 minute timeout for slow connections
+      };
+
+      console.log('[Server] Upload options:', uploadOptions);
+
+      try {
+        // Use upload_stream for better performance with buffers
+        const uploadResult = await new Promise<any>((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            uploadOptions,
+            (error, result) => {
+              if (error) {
+                console.error('[Server] Cloudinary upload_stream error:', error);
+                reject(error);
+              } else {
+                console.log('[Server] Cloudinary upload success:', result?.public_id);
+                resolve(result);
+              }
+            }
+          );
+
+          // Set a timeout for the upload stream
+          const timeout = setTimeout(() => {
+            uploadStream.destroy();
+            reject(new Error('Upload timeout'));
+          }, 120000); // 2 minutes
+
+          uploadStream.on('finish', () => clearTimeout(timeout));
+          uploadStream.on('error', () => clearTimeout(timeout));
+
+          uploadStream.end(file.buffer);
+        });
+
+        // Update user profile with Cloudinary URL
+        await User.findByIdAndUpdate(userId, {
+          profilePicture: uploadResult.secure_url
+        });
+
+        console.log('[Server] Profile picture updated successfully for user:', userId);
+
+        res.json({
+          message: 'Profile picture updated successfully',
+          profilePicture: uploadResult.secure_url
+        });
+
+      } catch (uploadError) {
+        console.error('Profile picture upload error:', uploadError);
+        res.status(500).json({
+          message: 'Failed to upload profile picture',
+          error: uploadError instanceof Error ? uploadError.message : 'Unknown error'
+        });
+      }
+
+    } catch (mainError) {
+      console.error('Main profile picture processing error:', mainError);
+      res.status(500).json({
+        message: 'Server error during profile picture processing',
+        error: mainError instanceof Error ? mainError.message : 'Unknown error'
+      });
+    }
+  }
+];
 
 /**
  * Update user settings
