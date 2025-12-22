@@ -149,17 +149,17 @@ export const GlobalNotificationProvider: React.FC<GlobalNotificationProviderProp
 
   // Start polling when component mounts
   useEffect(() => {
-    console.log('[GlobalNotification] Starting friend request polling (every 30 seconds)');
+    console.log('[GlobalNotification] Starting friend request polling (every 60 seconds)');
     
-    // Initial poll after a short delay to let auth settle
+    // Initial poll after a longer delay to let app fully initialize
     const initialTimeout = setTimeout(() => {
       pollForNewFriendRequests();
-    }, 3000);
+    }, 5000); // Increased to 5 seconds to avoid interfering with map initialization
     
-    // Then poll every 30 seconds
+    // Then poll every 60 seconds (reduced frequency to minimize background interference)
     pollingIntervalRef.current = setInterval(() => {
       pollForNewFriendRequests();
-    }, 30000); // 30 seconds
+    }, 60000); // 60 seconds instead of 30 seconds
 
     return () => {
       clearTimeout(initialTimeout);

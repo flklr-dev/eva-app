@@ -131,7 +131,6 @@ export const handleFriendInvite = async (
     // Fetch target user details
     console.log('[DeepLink] Fetching target user details...');
     let targetUserName = 'Unknown User';
-    let targetUserEmail = '';
     
     try {
       const API_BASE_URL = getApiBaseUrl();
@@ -155,7 +154,6 @@ export const handleFriendInvite = async (
         const data = await response.json();
         console.log('[DeepLink] User data received:', data);
         targetUserName = data.name || 'Unknown User';
-        targetUserEmail = data.email || '';
         console.log('[DeepLink] Target user found:', targetUserName);
       } else {
         console.log('[DeepLink] Failed to fetch user details, status:', response.status, response.statusText);

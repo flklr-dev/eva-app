@@ -36,7 +36,7 @@ interface MapViewProps {
   };
 }
 
-export const MapView = React.forwardRef<any, MapViewProps>(({
+export const MapView = React.memo(React.forwardRef<any, MapViewProps>(({
   initialRegion,
   markers = [],
   showsUserLocation = true,
@@ -151,13 +151,36 @@ export const MapView = React.forwardRef<any, MapViewProps>(({
     `;
   };
 
-  // Update map when userLocation changes
+  // Update map when userLocation changes - use injectJavaScript instead of reload
+  // This prevents white screen flashes and improves performance
   useEffect(() => {
-    if (webViewRef.current && userLocation) {
-      // Reload the map with new user location
-      webViewRef.current.reload();
+    if (webViewRef.current && userLocation && showsUserLocation) {
+      // Instead of reloading, update the user marker position dynamically
+      const updateScript = `
+        (function() {
+          // Remove existing user marker if any
+          map.eachLayer(function(layer) {
+            if (layer instanceof L.CircleMarker && layer.options.fillColor === '#4285F4') {
+              map.removeLayer(layer);
+            }
+          });
+          // Add new user marker at updated location
+          const userPos = [${userLocation.latitude}, ${userLocation.longitude}];
+          L.circleMarker(userPos, {
+            radius: 10,
+            fillColor: '#4285F4',
+            color: '#ffffff',
+            weight: 3,
+            fillOpacity: 1
+          }).addTo(map).bindPopup('Your Location');
+          // Pan to new location smoothly (no zoom change)
+          map.panTo(userPos, { animate: true, duration: 0.5 });
+        })();
+        true;
+      `;
+      webViewRef.current.injectJavaScript(updateScript);
     }
-  }, [userLocation]);
+  }, [userLocation, showsUserLocation]);
 
   return (
     <View style={[styles.container, style]}>
@@ -171,10 +194,16 @@ export const MapView = React.forwardRef<any, MapViewProps>(({
         scalesPageToFit={Platform.OS === 'android'}
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
+        // Prevent WebView from reloading on prop changes
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        // Improve Android performance
+        androidLayerType="hardware"
+        mixedContentMode="always"
       />
     </View>
   );
-});
+}));
 
 const styles = StyleSheet.create({
   container: {

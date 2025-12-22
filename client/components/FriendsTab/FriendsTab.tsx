@@ -1,12 +1,10 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
-import { MapView, LatLng } from '../MapView';
+import React, { useMemo, useEffect, useCallback, useRef } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { MapView } from '../MapView';
 import { StatusChip } from '../LocationTab/StatusChip';
 import { BluetoothIndicator } from '../LocationTab/BluetoothIndicator';
-import { LocationPermissionModal } from '../LocationTab/LocationPermissionModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Friend } from '../../types/friends';
-import * as LocationService from '../../services/locationService';
 import { calculateDistance } from '../../utils/distanceCalculator';
 
 interface FriendsTabProps {
@@ -48,15 +46,11 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
 }, ref) => {
   const insets = useSafeAreaInsets();
   
-  // Use shared location state if provided, otherwise use local state
-  const [localUserLocation, setLocalUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [localLocationPermissionGranted, setLocalLocationPermissionGranted] = useState(false);
-  const userLocation = sharedUserLocation !== undefined ? sharedUserLocation : localUserLocation;
-  const locationPermissionGranted = sharedLocationPermissionGranted !== undefined ? sharedLocationPermissionGranted : localLocationPermissionGranted;
-  
-  const [showLocationPermissionModal, setShowLocationPermissionModal] = useState(false);
-  const [locationPermissionMessage, setLocationPermissionMessage] = useState<string>('');
-  const [isRequestingLocation, setIsRequestingLocation] = useState(true);
+  // IMPORTANT: Location permission is already handled at HomeScreen level
+  // We receive sharedUserLocation and sharedLocationPermissionGranted as props
+  // No need to request location again here - this was causing the permission popup bug
+  const userLocation = sharedUserLocation;
+  const locationPermissionGranted = sharedLocationPermissionGranted;
 
   // Calculate distances and find nearest friend
   const friendsWithDistance = useMemo(() => {
@@ -78,7 +72,7 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
   }, [friends]);
 
   // Notify parent component when distances are calculated - use ref to avoid infinite loop
-  const prevFriendsWithDistanceRef = React.useRef<Array<Friend & { distance: number }>>([]);
+  const prevFriendsWithDistanceRef = useRef<Array<Friend & { distance: number }>>([]);
   useEffect(() => {
     // Only call callback if the friendsWithDistance actually changed (deep comparison by length and first item)
     const hasChanged = 
@@ -127,11 +121,6 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
       };
     }
 
-    // Default fallback
-    if (propInitialRegion) {
-      return propInitialRegion;
-    }
-
     // Default fallback - generic location while loading
     return {
       latitude: 14.5995, // Manila, Philippines
@@ -139,79 +128,8 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
       latitudeDelta: 0.1,
       longitudeDelta: 0.1,
     };
-  }, [userLocation, sharedInitialRegion, propInitialRegion]);
+  }, [userLocation, sharedInitialRegion]);
   
-  // Request location permission and get location on mount
-  useEffect(() => {
-    requestLocationPermissionAndFetch();
-  }, []);
-
-  const requestLocationPermissionAndFetch = async () => {
-    try {
-      setIsRequestingLocation(true);
-      
-      // Request permission
-      const permissionStatus = await LocationService.requestLocationPermission();
-      
-      if (permissionStatus.granted) {
-        const granted = true;
-        if (onLocationPermissionChange) {
-          onLocationPermissionChange(granted);
-        } else {
-          setLocalLocationPermissionGranted(granted);
-        }
-        
-        // Get current location
-        const location = await LocationService.getCurrentLocation();
-        
-        if (location) {
-          const locationData = {
-            latitude: location.latitude,
-            longitude: location.longitude,
-          };
-          if (onUserLocationChange) {
-            onUserLocationChange(locationData);
-          } else {
-            setLocalUserLocation(locationData);
-          }
-        } else {
-          // Location fetch failed but permission granted - show error
-          setLocationPermissionMessage('Unable to get your location. Please ensure location services are enabled.');
-          setShowLocationPermissionModal(true);
-        }
-      } else {
-        // Permission denied
-        const granted = false;
-        if (onLocationPermissionChange) {
-          onLocationPermissionChange(granted);
-        } else {
-          setLocalLocationPermissionGranted(granted);
-        }
-        setLocationPermissionMessage(
-          permissionStatus.message || 
-          'Location permission is required for EVA Alert to work. Please enable it in your device settings.'
-        );
-        setShowLocationPermissionModal(true);
-      }
-    } catch (error) {
-      console.error('Error requesting location:', error);
-      setLocationPermissionMessage('An error occurred while requesting location access.');
-      setShowLocationPermissionModal(true);
-    } finally {
-      setIsRequestingLocation(false);
-    }
-  };
-
-  const handleOpenSettings = async () => {
-    await LocationService.openLocationSettings();
-    setShowLocationPermissionModal(false);
-  };
-
-  const handleRetryLocation = async () => {
-    setShowLocationPermissionModal(false);
-    await requestLocationPermissionAndFetch();
-  };
-
   // Convert friends to markers (use friendsWithDistance if available for better data)
   const friendMarkers = useMemo(() => {
     const friendsToUse = friendsWithDistance.length > 0 ? friendsWithDistance : friends;
@@ -224,10 +142,10 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
   }, [friends, friendsWithDistance]);
   
   // Map ref for navigation
-  const mapRef = React.useRef<any>(null);
+  const mapRef = useRef<any>(null);
   
   // Handle friend press - navigate map to friend location (pan only, no zoom)
-  const handleFriendPressInternal = React.useCallback((friend: Friend & { distance: number }) => {
+  const handleFriendPressInternal = useCallback((friend: Friend & { distance: number }) => {
     // Navigate map to friend location directly (avoid infinite loop)
     // Only pan/move to friend location, don't zoom in/out
     if (mapRef.current && friend.coordinate) {
@@ -267,21 +185,15 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
   return (
     <>
       <View style={styles.mapWrapper}>
-        {isRequestingLocation ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Requesting location access...</Text>
-          </View>
-        ) : (
-          <MapView
-            ref={mapRef}
-            style={StyleSheet.absoluteFill}
-            initialRegion={initialRegion}
-            showsUserLocation={locationPermissionGranted}
-            userLocation={userLocation}
-            markers={friendMarkers}
-            mapPadding={{ top: 0, right: 0, bottom: 400, left: 0 }}
-          />
-        )}
+        <MapView
+          ref={mapRef}
+          style={StyleSheet.absoluteFill}
+          initialRegion={initialRegion}
+          showsUserLocation={locationPermissionGranted}
+          userLocation={userLocation}
+          markers={friendMarkers}
+          mapPadding={{ top: 0, right: 0, bottom: 400, left: 0 }}
+        />
 
         {locationPermissionGranted && (
           <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
@@ -293,14 +205,6 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
           </View>
         )}
       </View>
-
-      <LocationPermissionModal
-        visible={showLocationPermissionModal}
-        message={locationPermissionMessage}
-        onRequestClose={() => setShowLocationPermissionModal(false)}
-        onRetry={handleRetryLocation}
-        onOpenSettings={handleOpenSettings}
-      />
     </>
   );
 });
@@ -324,17 +228,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 3,
     paddingHorizontal: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
   },
 });
 

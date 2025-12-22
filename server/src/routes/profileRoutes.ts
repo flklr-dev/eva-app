@@ -27,10 +27,10 @@ router.get('/public/:userId', async (req, res) => {
     }
     
     // Return only public fields (not password, sensitive settings, etc.)
+    // SECURITY: Do not expose email for privacy reasons
     res.json({
       id: profile.id,
       name: profile.name,
-      email: profile.email,
       profilePicture: profile.profilePicture,
     });
   } catch (error) {
