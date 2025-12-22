@@ -292,3 +292,58 @@ export const deleteAccount = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({ message: 'Server error during account deletion' });
   }
 };
+
+/**
+ * Update user's current location
+ */
+export const updateLocation = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { latitude, longitude, accuracy } = req.body;
+    const userId = req.user?._id.toString()!;
+
+    // Validate coordinates
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      res.status(400).json({ message: 'Valid latitude and longitude are required' });
+      return;
+    }
+
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      res.status(400).json({ message: 'Invalid coordinate values' });
+      return;
+    }
+
+    // Update user's lastKnownLocation
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        lastKnownLocation: {
+          coordinates: {
+            lat: latitude,
+            lng: longitude,
+          },
+          timestamp: new Date(),
+          accuracy: accuracy || undefined,
+        },
+        isActive: true,
+        lastSeen: new Date(),
+      },
+      { new: true, select: 'lastKnownLocation isActive lastSeen' }
+    );
+
+    if (!updatedUser) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    console.log('[Server] Location updated for user:', userId);
+
+    res.json({
+      message: 'Location updated successfully',
+      location: updatedUser.lastKnownLocation,
+    });
+
+  } catch (error: any) {
+    console.error('[Server] Update location error:', error);
+    res.status(500).json({ message: 'Server error during location update' });
+  }
+};

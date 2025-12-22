@@ -36,10 +36,10 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
 
   // Use shared initial region or fallback
   const initialRegion = sharedInitialRegion || {
-    latitude: 6.950,
-    longitude: 126.220,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
+    latitude: 14.5995, // Manila, Philippines - generic fallback while loading
+    longitude: 120.9842,
+    latitudeDelta: 0.1,
+    longitudeDelta: 0.1,
   };
 
   return (

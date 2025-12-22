@@ -1,6 +1,7 @@
 import { Linking } from 'react-native';
 import { Alert } from 'react-native';
 import { sendFriendRequest } from '../services/friendService';
+import { getApiBaseUrl } from './apiConfig';
 
 /**
  * Deep Link Handler
@@ -117,19 +118,71 @@ export const handleFriendInvite = async (
   tokenFromContext?: string | null
 ): Promise<boolean> => {
   try {
-    console.log('[DeepLink] Handling friend invite for userId:', userId);
+    console.log('[DeepLink] ========== HANDLING FRIEND INVITE ==========');
+    console.log('[DeepLink] Target userId:', userId);
+    console.log('[DeepLink] Has token:', !!tokenFromContext);
     
     if (!userId || userId.trim() === '') {
+      console.log('[DeepLink] Invalid userId, showing error');
       Alert.alert('Error', 'Invalid friend invitation link');
       return false;
     }
 
+    // Fetch target user details
+    console.log('[DeepLink] Fetching target user details...');
+    let targetUserName = 'Unknown User';
+    let targetUserEmail = '';
+    
+    try {
+      const API_BASE_URL = getApiBaseUrl();
+      console.log('[DeepLink] Attempting to fetch from:', `${API_BASE_URL}/api/profile/public/${userId}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // Increase to 10 seconds timeout for slow networks
+      
+      const response = await fetch(`${API_BASE_URL}/api/profile/public/${userId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log('[DeepLink] Fetch response status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[DeepLink] User data received:', data);
+        targetUserName = data.name || 'Unknown User';
+        targetUserEmail = data.email || '';
+        console.log('[DeepLink] Target user found:', targetUserName);
+      } else {
+        console.log('[DeepLink] Failed to fetch user details, status:', response.status, response.statusText);
+      }
+    } catch (fetchError: any) {
+      console.log('[DeepLink] Error fetching user details:', fetchError.message || fetchError);
+      
+      // Provide more specific error handling
+      if (fetchError.name === 'AbortError' || fetchError.message?.includes('timeout')) {
+        console.log('[DeepLink] Request timed out - network may be slow');
+      } else if (fetchError.message?.includes('Network request failed') || fetchError.message?.includes('Failed to fetch')) {
+        console.log('[DeepLink] Network connectivity issue - possibly slow connection or offline');
+      }
+      
+      // This is expected if the user is not yet logged in, network is slow, or offline
+      // The modal will just show with default name
+    }
+
     // Confirm before performing an action triggered by a link/QR/clipboard.
     // This prevents accidental friend requests when a user taps a link unintentionally.
+    console.log('[DeepLink] Showing confirmation dialog with user details');
     const shouldSend = await new Promise<boolean>((resolve) => {
+      const confirmMessage = targetUserName;
+      
       Alert.alert(
         'Add Friend',
-        'Send a friend request from this invitation?',
+        `Send a friend request to:\n\n${confirmMessage}?`,
         [
           { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
           { text: 'Send', style: 'default', onPress: () => resolve(true) },
@@ -143,31 +196,52 @@ export const handleFriendInvite = async (
       return false;
     }
 
+    console.log('[DeepLink] User confirmed, sending friend request...');
     // Send friend request (token may be provided by caller to avoid AsyncStorage timing issues)
     await sendFriendRequest(userId, tokenFromContext);
     
+    console.log('[DeepLink] ✓ Friend request sent successfully');
     Alert.alert(
       'Friend Request Sent',
-      'Your friend request has been sent successfully!',
+      `Your friend request to ${targetUserName} has been sent successfully!`,
       [{ text: 'OK' }]
     );
     
+    console.log('[DeepLink] ==============================================');
     return true;
   } catch (error: any) {
-    console.error('[DeepLink] Error handling friend invite:', error);
+    console.error('[DeepLink] ========== ERROR HANDLING FRIEND INVITE ==========');
+    console.error('[DeepLink] Error:', error);
+    console.error('[DeepLink] Error message:', error?.message);
     
     const errorMessage = error?.message || 'Failed to send friend request';
+    console.log('[DeepLink] Processing error message:', errorMessage);
     
-    if (errorMessage.includes('already')) {
+    // Check for more specific error messages first
+    if (errorMessage.includes('pending friend request to you')) {
+      // User B tries to send request to User A, but User A already sent one to User B
+      console.log('[DeepLink] Error type: Pending request from other user');
+      Alert.alert('Pending Request', 'This user has already sent you a friend request. Check your pending requests!');
+    } else if (errorMessage.includes('pending friend request to this user')) {
+      // User already has an outgoing pending request
+      console.log('[DeepLink] Error type: Already sent request');
+      Alert.alert('Request Pending', 'You already have a pending friend request to this user');
+    } else if (errorMessage.includes('pending')) {
+      // Generic pending message
+      console.log('[DeepLink] Error type: Generic pending');
+      Alert.alert('Request Pending', errorMessage);
+    } else if (errorMessage.includes('already friends')) {
+      console.log('[DeepLink] Error type: Already friends');
       Alert.alert('Already Friends', 'You are already friends with this user');
     } else if (errorMessage.includes('yourself')) {
+      console.log('[DeepLink] Error type: Cannot send to self');
       Alert.alert('Invalid Action', 'Cannot send friend request to yourself');
-    } else if (errorMessage.includes('pending')) {
-      Alert.alert('Request Pending', 'You already have a pending friend request with this user');
     } else {
+      console.log('[DeepLink] Error type: Unknown');
       Alert.alert('Error', errorMessage);
     }
     
+    console.error('[DeepLink] ==============================================');
     return false;
   }
 };

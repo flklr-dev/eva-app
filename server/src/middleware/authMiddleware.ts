@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User, { IUser } from '../models/User';
+import { JWT_SECRET } from '../config/jwt';
 
 interface AuthRequest extends Request {
   user?: IUser;
@@ -27,7 +28,7 @@ export const authMiddleware = async (
     // Verify token
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || 'secret'
+      JWT_SECRET
     ) as JwtPayload;
 
     // Get user from token

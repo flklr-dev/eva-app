@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { validationResult } from 'express-validator';
 import User, { IUser } from '../models/User';
+import { JWT_SECRET } from '../config/jwt';
 
 interface AuthRequest extends Request {
   user?: IUser;
@@ -9,10 +10,10 @@ interface AuthRequest extends Request {
 
 // Generate JWT Token
 const generateToken = (userId: string): string => {
-  const secret = (process.env.JWT_SECRET || 'your_secret_key_change_this') as string;
-  return jwt.sign({ userId }, secret, {
+  console.log('[Server] Generating token with secret length:', JWT_SECRET.length);
+  return jwt.sign({ userId }, JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '7d',
-  } as any);
+  } as jwt.SignOptions);
 };
 
 // Register User
@@ -145,6 +146,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         id: user._id,
         name: user.name,
         email: user.email,
+        profilePicture: user.profilePicture,
       },
     });
     console.log('[Server] Login response sent');
@@ -171,6 +173,7 @@ export const getCurrentUser = async (
         id: user._id,
         name: user.name,
         email: user.email,
+        profilePicture: user.profilePicture,
       },
     });
   } catch (error) {

@@ -13,25 +13,41 @@ interface AuthRequest extends Request {
  */
 export const sendFriendRequest = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    console.log('[FriendController] ========== SEND FRIEND REQUEST ==========');
     const userId = req.user?._id?.toString();
+    console.log('[FriendController] Requester userId:', userId);
+    
     if (!userId) {
+      console.log('[FriendController] Unauthorized - no userId');
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
 
     const { recipientId } = req.body;
+    console.log('[FriendController] Recipient ID from body:', recipientId);
 
+    // Input validation
     if (!recipientId) {
+      console.log('[FriendController] Missing recipient ID');
       res.status(400).json({ message: 'Recipient ID is required' });
       return;
     }
 
+    if (typeof recipientId !== 'string' || recipientId.trim() === '') {
+      console.log('[FriendController] Invalid recipient ID format');
+      res.status(400).json({ message: 'Invalid recipient ID' });
+      return;
+    }
+
     if (userId === recipientId) {
+      console.log('[FriendController] Cannot send to self');
       res.status(400).json({ message: 'Cannot send friend request to yourself' });
       return;
     }
 
+    console.log('[FriendController] Calling friendService.sendFriendRequest');
     const friendRequest = await friendService.sendFriendRequest(userId, recipientId);
+    console.log('[FriendController] ✓ Friend request created:', friendRequest._id);
 
     res.status(201).json({
       message: 'Friend request sent successfully',
@@ -40,17 +56,35 @@ export const sendFriendRequest = async (req: AuthRequest, res: Response): Promis
         requesterId: friendRequest.requesterId,
         recipientId: friendRequest.recipientId,
         status: friendRequest.status,
+        createdAt: friendRequest.createdAt,
       },
     });
+    console.log('[FriendController] =============================================');
   } catch (error: any) {
-    console.error('Send friend request error:', error);
-    if (error.message === 'User not found') {
-      res.status(404).json({ message: error.message });
-    } else if (error.message === 'Already friends' || error.message === 'Friend request already pending') {
-      res.status(400).json({ message: error.message });
+    console.error('[FriendController] ========== ERROR ==========');
+    console.error('[FriendController] Error:', error);
+    console.error('[FriendController] Error message:', error.message);
+    const errorMessage = error.message || 'Server error';
+
+    // Map specific error messages to appropriate HTTP status codes
+    if (errorMessage.includes('not found')) {
+      console.log('[FriendController] Error type: Not found (404)');
+      res.status(404).json({ message: errorMessage });
+    } else if (errorMessage.includes('already') ||
+               errorMessage.includes('pending') ||
+               errorMessage.includes('yourself') ||
+               errorMessage.includes('active') ||
+               errorMessage.includes('Unable')) {
+      console.log('[FriendController] Error type: Bad request (400):', errorMessage);
+      res.status(400).json({ message: errorMessage });
+    } else if (errorMessage.includes('Invalid user ID')) {
+      console.log('[FriendController] Error type: Invalid user ID (400)');
+      res.status(400).json({ message: errorMessage });
     } else {
+      console.log('[FriendController] Error type: Server error (500)');
       res.status(500).json({ message: 'Server error' });
     }
+    console.error('[FriendController] =====================================');
   }
 };
 

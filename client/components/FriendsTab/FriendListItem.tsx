@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
 
 interface FriendListItemProps {
@@ -7,6 +7,7 @@ interface FriendListItemProps {
   country: string;
   profilePicture?: string;
   distance: number;
+  status: 'online' | 'offline' | 'away';
   onPress?: () => void;
 }
 
@@ -18,6 +19,7 @@ export const FriendListItem: React.FC<FriendListItemProps> = ({
   country,
   profilePicture,
   distance,
+  status,
   onPress,
 }) => {
   const initials = name
@@ -28,6 +30,9 @@ export const FriendListItem: React.FC<FriendListItemProps> = ({
     .slice(0, 2);
 
   const formatDistance = (km: number): string => {
+    if (isNaN(km) || km === undefined || km === null) {
+      return 'Unknown';
+    }
     if (km < 1) {
       return `${Math.round(km * 1000)}m`;
     }
@@ -36,16 +41,27 @@ export const FriendListItem: React.FC<FriendListItemProps> = ({
 
   const content = (
     <>
-      {/* Profile Picture or Initials */}
+      {/* Profile Picture or Initials with Online Status Indicator */}
       <View style={styles.profileContainer}>
         {profilePicture ? (
           <View style={styles.profileImageContainer}>
-            {/* In a real app, you'd use Image component here */}
-            <Text style={styles.profileImagePlaceholder}>IMG</Text>
+            <Image
+              source={{ uri: profilePicture }}
+              style={styles.profileImage}
+              resizeMode="cover"
+            />
+            {/* Online Status Indicator */}
+            {status === 'online' && (
+              <View style={styles.onlineIndicator} />
+            )}
           </View>
         ) : (
           <View style={styles.profileInitialsContainer}>
             <Text style={styles.profileInitials}>{initials}</Text>
+            {/* Online Status Indicator */}
+            {status === 'online' && (
+              <View style={styles.onlineIndicator} />
+            )}
           </View>
         )}
       </View>
@@ -84,6 +100,7 @@ const styles = StyleSheet.create({
   },
   profileContainer: {
     marginRight: SPACING.MD,
+    position: 'relative',
   },
   profileImageContainer: {
     width: 48,
@@ -92,11 +109,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.BACKGROUND_GRAY,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    overflow: 'visible', // Changed from 'hidden' to allow indicator to extend outside
   },
-  profileImagePlaceholder: {
-    fontSize: 10,
-    color: COLORS.TEXT_SECONDARY,
+  profileImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   profileInitialsContainer: {
     width: 48,
@@ -105,11 +123,25 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible', // Ensure overflow is visible for consistency
   },
   profileInitials: {
     fontSize: 18,
     fontWeight: '600',
     color: COLORS.BACKGROUND_WHITE,
+  },
+  // Online status indicator - small green circle at bottom right
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: -2, // Offset slightly outside to be fully visible
+    right: -2,  // Offset slightly outside to be fully visible
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#10B981', // green-500
+    borderWidth: 2.5,
+    borderColor: COLORS.BACKGROUND_WHITE,
+    zIndex: 10, // Ensure it appears on top
   },
   friendInfo: {
     flex: 1,

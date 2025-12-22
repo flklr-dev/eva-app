@@ -1,5 +1,7 @@
 import * as Location from 'expo-location';
 import { Alert, Linking, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getApiBaseUrl } from '../utils/apiConfig';
 
 export interface LocationData {
   latitude: number;
@@ -180,5 +182,83 @@ export const openLocationSettings = async (): Promise<void> => {
       [{ text: 'OK' }]
     );
   }
+};
+
+/**
+ * Upload user's location to the server
+ * This allows friends to see the user's location
+ */
+export const uploadLocationToServer = async (
+  location: LocationData,
+  token: string
+): Promise<boolean> => {
+  try {
+    const apiUrl = getApiBaseUrl();
+    const response = await fetch(`${apiUrl}/api/profile/location`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracy: location.accuracy,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[Location] Failed to upload location to server:', response.status);
+      return false;
+    }
+
+    console.log('[Location] Location uploaded to server successfully');
+    return true;
+  } catch (error) {
+    console.error('[Location] Error uploading location to server:', error);
+    return false;
+  }
+};
+
+/**
+ * Start location sharing - watches location and uploads to server periodically
+ */
+export const startLocationSharing = (
+  token: string,
+  onLocationUpdate?: (location: LocationData) => void,
+  onError?: (error: Error) => void
+): (() => void) => {
+  let lastUploadTime = 0;
+  const UPLOAD_INTERVAL = 60000; // Upload every 60 seconds minimum
+
+  console.log('[Location] Starting location sharing...');
+
+  const cleanup = watchLocation(
+    async (location) => {
+      // Notify callback of location update
+      onLocationUpdate?.(location);
+
+      // Upload to server at intervals
+      const now = Date.now();
+      if (now - lastUploadTime >= UPLOAD_INTERVAL) {
+        lastUploadTime = now;
+        await uploadLocationToServer(location, token);
+      }
+    },
+    (error) => {
+      console.error('[Location] Location watch error:', error);
+      onError?.(error);
+    }
+  );
+
+  // Upload initial location immediately
+  getCurrentLocation().then((location) => {
+    if (location && token) {
+      uploadLocationToServer(location, token);
+      lastUploadTime = Date.now();
+    }
+  });
+
+  return cleanup;
 };
 

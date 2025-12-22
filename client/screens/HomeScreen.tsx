@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, Modal, Platform, Animated } from 'react-native';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ImageBackground, Modal, Platform, Animated, DeviceEventEmitter } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -42,6 +42,8 @@ import { calculateDistance } from '../utils/distanceCalculator';
 import { shareFriendInvite } from '../utils/shareUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
 import { getFriendRequests, getFriendsWithToken } from '../services/friendService';
+import { reverseGeocode } from '../utils/geocoding';
+import { initializeWebSocket, disconnectWebSocket, setOnFriendRequestReceived, setOnFriendRequestResponded } from '../services/webSocketService';
 
 const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
@@ -150,8 +152,13 @@ const LocationTab: React.FC<{
   // Bluetooth state
   const [isBluetoothConnected, setIsBluetoothConnected] = useState(false); // false = red, true = green
 
-  // Use shared initial region if provided, otherwise calculate from userLocation
-  const initialRegion = sharedInitialRegion || useMemo(() => {
+  // Calculate online friends count (real-time)
+  const onlineFriendsCount = useMemo(() => {
+    return (friends || []).filter(friend => friend.status === 'online').length;
+  }, [friends]);
+
+  // Calculate initial region - always call useMemo to satisfy Rules of Hooks
+  const calculatedInitialRegion = useMemo(() => {
     // ALWAYS focus on user location when available (LocationTab default view)
     // Friend markers will still be visible on the map
     if (userLocation) {
@@ -162,14 +169,18 @@ const LocationTab: React.FC<{
         longitudeDelta: 0.01,
       };
     }
-    // Default fallback
+    // Default fallback - generic Philippines location while loading
+    // This will be updated once user's real location is obtained
     return {
-      latitude: 6.950,
-      longitude: 126.220,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
+      latitude: 14.5995, // Manila, Philippines
+      longitude: 120.9842,
+      latitudeDelta: 0.1,
+      longitudeDelta: 0.1,
     };
   }, [userLocation]);
+
+  // Use shared initial region if provided, otherwise use calculated region
+  const initialRegion = sharedInitialRegion || calculatedInitialRegion;
 
   const loadNotificationState = async () => {
     try {
@@ -196,16 +207,7 @@ const LocationTab: React.FC<{
     }
   };
 
-  const setupNotificationListeners = () => {
-    return addNotificationListeners(
-      (notification) => {
-        console.log('Notification received:', notification);
-      },
-      (response) => {
-        console.log('Notification response:', response);
-      }
-    );
-  };
+
 
   // Request location permission and get location on mount
   useEffect(() => {
@@ -278,13 +280,7 @@ const LocationTab: React.FC<{
     await requestLocationPermissionAndFetch();
   };
 
-  useEffect(() => {
-    loadNotificationState();
-    const cleanup = setupNotificationListeners();
-    return () => {
-      cleanup();
-    };
-  }, [token]);
+
 
   const handleNotifyToggle = async () => {
     if (isNotified) {
@@ -358,7 +354,7 @@ const LocationTab: React.FC<{
             initialRegion={initialRegion}
             showsUserLocation={locationPermissionGranted}
             userLocation={userLocation}
-            markers={friends.map((friend: FriendWithDistance) => ({
+            markers={(friends || []).map((friend: FriendWithDistance) => ({
               id: friend.id,
               coordinate: friend.coordinate,
               name: friend.name,
@@ -378,11 +374,11 @@ const LocationTab: React.FC<{
               />
             )}
 
-            <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
-              <StatusChip
-                friendCount={friends.length}
-                onDropdownPress={() => console.log('Dropdown pressed')}
-              />
+              <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
+                <StatusChip
+                  friendCount={onlineFriendsCount}
+                  onDropdownPress={() => console.log('Dropdown pressed')}
+                />
               <BluetoothIndicator isConnected={isBluetoothConnected} />
             </View>
           </>
@@ -411,6 +407,7 @@ export const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState('LOCATION');
   const insets = useSafeAreaInsets();
   const { token, user } = useAuth();
+  const websocketInitializedRef = useRef(false);
   
   // Shared user location state - used by all tabs for consistent map view
   const [sharedUserLocation, setSharedUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -426,22 +423,17 @@ export const HomeScreen: React.FC = () => {
         longitudeDelta: 0.01, // Consistent zoom level across all tabs
       };
     }
-    // Default fallback
-    return {
-      latitude: 6.950,
-      longitude: 126.220,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    };
+    // Return null when no user location - let tabs handle the empty state
+    return undefined;
   }, [sharedUserLocation]);
   
   // Friends with distance state (loaded from API)
   const [friendsWithDistance, setFriendsWithDistance] = useState<FriendWithDistance[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   
-  const handleFriendsWithDistanceChange = (friends: FriendWithDistance[]) => {
+  const handleFriendsWithDistanceChange = useCallback((friends: FriendWithDistance[]) => {
     setFriendsWithDistance(friends);
-  };
+  }, []);
   
   const friendsTabRef = React.useRef<FriendsTabRef | null>(null);
   
@@ -599,6 +591,34 @@ export const HomeScreen: React.FC = () => {
       pulseAnim2.stopAnimation();
     };
   }, [pulseAnim1, pulseAnim2]);
+
+  // Location sharing - upload user's location to server when enabled
+  useEffect(() => {
+    if (!token || !sharedLocationPermissionGranted || !shareMyLocation) {
+      return;
+    }
+
+    console.log('[Location] Starting location sharing to server...');
+    
+    const cleanup = LocationService.startLocationSharing(
+      token,
+      (location) => {
+        // Update shared user location state
+        setSharedUserLocation({
+          latitude: location.latitude,
+          longitude: location.longitude,
+        });
+      },
+      (error) => {
+        console.error('[Location] Location sharing error:', error);
+      }
+    );
+
+    return () => {
+      console.log('[Location] Stopping location sharing...');
+      cleanup();
+    };
+  }, [token, sharedLocationPermissionGranted, shareMyLocation]);
   
   const handleAddFriend = () => {
     console.log('Add friend pressed');
@@ -649,15 +669,142 @@ export const HomeScreen: React.FC = () => {
   // Friend Requests state
   const [showFriendRequests, setShowFriendRequests] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  
+  // Refs for functions that need to be accessed from event listeners
+  const loadFriendsRef = useRef<(() => Promise<void>) | null>(null);
+  const loadPendingRequestsCountRef = useRef<(() => Promise<void>) | null>(null);
+  const setActiveTabRef = useRef<(tab: string) => void>(setActiveTab);
+  const setShowFriendRequestsRef = useRef<(show: boolean) => void>(setShowFriendRequests);
 
-  // Load pending friend requests count
-  const loadPendingRequestsCount = async () => {
-    if (!user || !token) {
-      console.log('[FriendRequests] Skipping load - no user or token');
-      return;
+  const setupNotificationListeners = () => {
+    return addNotificationListeners(
+      (notification) => {
+        console.log('Notification received:', notification);
+        
+        // Handle friend request notifications
+        const data = notification.request.content.data;
+        if (data.eventType === 'friend_request_received') {
+          console.log('[HomeScreen] Friend request notification received, refreshing requests count...');
+          if (loadPendingRequestsCountRef.current) {
+            loadPendingRequestsCountRef.current();
+          }
+        } else if (data.eventType === 'friend_request_accepted') {
+          console.log('[HomeScreen] Friend request accepted notification received, refreshing friends list...');
+          if (loadFriendsRef.current) {
+            loadFriendsRef.current();
+          }
+          if (loadPendingRequestsCountRef.current) {
+            loadPendingRequestsCountRef.current();
+          }
+        } else if (data.eventType === 'friend_request_rejected') {
+          console.log('[HomeScreen] Friend request rejected notification received, refreshing requests count...');
+          if (loadPendingRequestsCountRef.current) {
+            loadPendingRequestsCountRef.current();
+          }
+        }
+      },
+      (response) => {
+        console.log('Notification response:', response);
+        
+        // Handle notification tap
+        const data = response.notification.request.content.data;
+        if (data.eventType === 'friend_request_received') {
+          console.log('[HomeScreen] Friend request notification tapped, showing friend requests panel...');
+          if (setActiveTabRef.current && setShowFriendRequestsRef.current) {
+            setActiveTabRef.current('FRIENDS');
+            setShowFriendRequestsRef.current(true);
+          }
+        }
+      }
+    );
+  };
+
+  // Refs to prevent concurrent API calls
+  const isLoadingFriendsRef = useRef(false);
+  const isLoadingRequestsRef = useRef(false);
+  const lastFriendsLoadRef = useRef<number>(0);
+  const lastRequestsLoadRef = useRef<number>(0);
+  const hasLoadedFriendsRef = useRef(false);
+  const friendsTabActiveRef = useRef(false);
+
+  // Reset friend requests panel when navigating away from friends tab
+  useEffect(() => {
+    if (activeTab !== 'FRIENDS') {
+      setShowFriendRequests(false);
+    }
+  }, [activeTab]);
+
+  // Initialize WebSocket connection for real-time updates
+  useEffect(() => {
+    if (!token) return;
+    
+    // Initialize WebSocket
+    if (!websocketInitializedRef.current) {
+      console.log('[HomeScreen] Initializing WebSocket connection...');
+      initializeWebSocket();
+      websocketInitializedRef.current = true;
     }
     
+    // Register callbacks using refs to avoid stale closures
+    const cleanupFriendRequestReceived = setOnFriendRequestReceived(() => {
+      console.log('[HomeScreen] Friend request received via WebSocket, refreshing...');
+      // Use refs to avoid stale closures
+      if (loadPendingRequestsCountRef.current) {
+        loadPendingRequestsCountRef.current();
+      }
+    });
+    
+    const cleanupFriendRequestResponded = setOnFriendRequestResponded(() => {
+      console.log('[HomeScreen] Friend request responded via WebSocket, refreshing...');
+      // Use refs to avoid stale closures
+      if (loadPendingRequestsCountRef.current) {
+        loadPendingRequestsCountRef.current();
+      }
+      if (loadFriendsRef.current) {
+        loadFriendsRef.current();
+      }
+    });
+
+    return () => {
+      console.log('[HomeScreen] Cleaning up WebSocket callbacks...');
+      // Clean up callbacks
+      cleanupFriendRequestReceived();
+      cleanupFriendRequestResponded();
+    };
+  }, [token]); // Only depend on token, not on the callback functions
+  
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (websocketInitializedRef.current) {
+        console.log('[HomeScreen] Component unmounting, disconnecting WebSocket...');
+        disconnectWebSocket();
+        websocketInitializedRef.current = false;
+      }
+    };
+  }, []);
+
+  // Load pending friend requests count
+  const loadPendingRequestsCount = useCallback(async (forceRefresh = false) => {
+    if (!user || !token) {
+      // console.log('[FriendRequests] Skipping load - no user or token');
+      return;
+    }
+
+    const now = Date.now();
+    if (!forceRefresh && now - lastRequestsLoadRef.current < 3000) { // Minimum 3 seconds between calls
+      // console.log('[FriendRequests] Too frequent, skipping...');
+      return;
+    }
+
+    if (isLoadingRequestsRef.current) {
+      // console.log('[FriendRequests] Already loading requests, skipping...');
+      return;
+    }
+
     try {
+      lastRequestsLoadRef.current = now;
+      isLoadingRequestsRef.current = true;
       console.log('[FriendRequests] Loading pending requests count...');
       // Pass token from context to avoid AsyncStorage timing issues
       const data = await getFriendRequests(token);
@@ -670,51 +817,97 @@ export const HomeScreen: React.FC = () => {
       if (error?.message?.includes('Not authenticated')) {
         console.warn('[FriendRequests] Auth token not ready yet, will retry');
       }
+    } finally {
+      isLoadingRequestsRef.current = false;
     }
-  };
+  }, [user?.id, token]);
 
   // Load friends list from API
-  const loadFriends = async () => {
+  const loadFriends = useCallback(async (forceRefresh = false) => {
     if (!user || !token) {
-      console.log('[Friends] Skipping load - no user or token');
+      // console.log('[Friends] Skipping load - no user or token');
+      return;
+    }
+
+    const now = Date.now();
+    if (!forceRefresh && now - lastFriendsLoadRef.current < 5000) { // Minimum 5 seconds between calls
+      // console.log('[Friends] Too frequent, skipping...');
+      return;
+    }
+
+    if (isLoadingFriendsRef.current) {
+      // console.log('[Friends] Already loading, skipping...');
       return;
     }
 
     try {
+      lastFriendsLoadRef.current = now;
+      isLoadingFriendsRef.current = true;
       setIsLoadingFriends(true);
       console.log('[Friends] Loading friends from API...', { userId: user.id, hasToken: !!token });
       
       // Use token from context directly instead of AsyncStorage
       const friends = await getFriendsWithToken(token);
-      console.log('[Friends] Loaded friends:', friends.length);
+      // console.log('[Friends] Loaded friends:', friends.length);
 
       // Transform API response to FriendWithDistance format
-      const userLocation = sharedUserLocation || { latitude: 6.950, longitude: 126.220 };
+      // Note: sharedUserLocation is read directly, not in dependencies to avoid infinite loops
       
-      const friendsWithDistanceData: FriendWithDistance[] = friends.map((friend) => {
-        // Use default location if friend doesn't have location data
-        // TODO: Get actual location from friend's lastKnownLocation when available
-        const friendLocation = { latitude: 6.950, longitude: 126.220 };
-        
-        return {
-          id: friend.id,
-          name: friend.name,
-          email: friend.email,
-          profilePicture: friend.profilePicture,
-          country: 'Unknown', // API doesn't return country yet
-          status: friend.isActive ? 'online' : 'offline',
-          coordinate: {
-            latitude: friendLocation.latitude,
-            longitude: friendLocation.longitude,
-          },
-          distance: calculateDistance(
-            userLocation.latitude,
-            userLocation.longitude,
-            friendLocation.latitude,
-            friendLocation.longitude
-          ),
-        };
-      });
+      const friendsWithDistanceData: FriendWithDistance[] = await Promise.all(
+        friends.map(async (friend) => {
+          // Use friend's lastKnownLocation if available (even for offline friends)
+          const hasLastKnownLocation = !!friend.lastKnownLocation?.coordinates?.lat && 
+                                      !!friend.lastKnownLocation?.coordinates?.lng;
+          
+          const friendLocation = hasLastKnownLocation
+            ? { 
+                latitude: friend.lastKnownLocation!.coordinates.lat, 
+                longitude: friend.lastKnownLocation!.coordinates.lng 
+              }
+            : null;
+          
+          // Calculate distance only if both user and friend have location data
+          let distance = NaN;
+          if (sharedUserLocation && friendLocation) {
+            distance = calculateDistance(
+              sharedUserLocation.latitude,
+              sharedUserLocation.longitude,
+              friendLocation.latitude,
+              friendLocation.longitude
+            );
+          }
+          
+          // Get human-readable location name using reverse geocoding
+          // Show last known location for both online and offline friends
+          let locationDisplay = 'Location not shared';
+          if (hasLastKnownLocation) {
+            try {
+              const geocodingResult = await reverseGeocode(
+                friend.lastKnownLocation!.coordinates.lat,
+                friend.lastKnownLocation!.coordinates.lng
+              );
+              locationDisplay = geocodingResult.displayName;
+            } catch (error) {
+              // Fallback to coordinates if geocoding fails
+              const lat = friend.lastKnownLocation!.coordinates.lat.toFixed(4);
+              const lng = friend.lastKnownLocation!.coordinates.lng.toFixed(4);
+              locationDisplay = `${lat}, ${lng}`;
+            }
+          }
+          
+          return {
+            id: friend.id,
+            name: friend.name,
+            email: friend.email,
+            profilePicture: friend.profilePicture,
+            country: locationDisplay,
+            // Use isOnline from server if available, otherwise fall back to isActive for backward compatibility
+            status: friend.isOnline ? 'online' : 'offline',
+            coordinate: friendLocation || { latitude: 0, longitude: 0 }, // Default for mapping (won't be shown on map)
+            distance: distance,
+          };
+        })
+      );
 
       setFriendsWithDistance(friendsWithDistanceData);
     } catch (error: any) {
@@ -723,26 +916,109 @@ export const HomeScreen: React.FC = () => {
       setFriendsWithDistance([]);
     } finally {
       setIsLoadingFriends(false);
+      isLoadingFriendsRef.current = false;
     }
-  };
+  }, [user?.id, token]); // Only include stable dependencies
 
-  // Load friends and requests count when Friends tab is active
+  // Store functions in refs to avoid dependency issues
   useEffect(() => {
-    if (activeTab === 'FRIENDS' && user && token) {
-      // Add small delay to ensure token is fully available
+    loadFriendsRef.current = loadFriends;
+    loadPendingRequestsCountRef.current = loadPendingRequestsCount;
+    setActiveTabRef.current = setActiveTab;
+    setShowFriendRequestsRef.current = setShowFriendRequests;
+  }, [loadFriends, loadPendingRequestsCount, setActiveTab, setShowFriendRequests]);
+
+  // Setup notification listeners
+  useEffect(() => {
+    const cleanup = setupNotificationListeners();
+    return () => {
+      cleanup();
+    };
+  }, []);
+
+  // Listen for navigation events from global notifications
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('navigateToFriendsTab', () => {
+      console.log('[HomeScreen] Received navigate to friends tab event');
+      // Set active tab to friends and show friend requests panel
+      if (setActiveTabRef.current && setShowFriendRequestsRef.current) {
+        setActiveTabRef.current('FRIENDS');
+        setShowFriendRequestsRef.current(true);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  // Load friends when user/token becomes available (regardless of tab) - only once
+  useEffect(() => {
+    if (user?.id && token && !hasLoadedFriendsRef.current) {
+      hasLoadedFriendsRef.current = true;
+      // Small delay to ensure token is fully available
       const timer = setTimeout(() => {
-        loadFriends();
-        loadPendingRequestsCount();
+        // Call function directly without including in dependencies
+        if (loadFriendsRef.current) {
+          loadFriendsRef.current();
+        }
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [activeTab, user, token, sharedUserLocation]);
+  }, [user?.id, token]); // Only depend on user?.id and token
+
+  // Load friends and requests count when Friends tab is active
+  useEffect(() => {
+    const isFriendsTab = activeTab === 'FRIENDS';
+    const wasFriendsTab = friendsTabActiveRef.current;
+    
+    // Only load when transitioning TO Friends tab, not on every render
+    if (isFriendsTab && !wasFriendsTab && user?.id && token && loadFriendsRef.current && loadPendingRequestsCountRef.current) {
+      friendsTabActiveRef.current = true;
+      hasLoadedFriendsRef.current = false;
+      // Add small delay to ensure token is fully available
+      const timer = setTimeout(() => {
+        loadFriendsRef.current?.();
+        loadPendingRequestsCountRef.current?.();
+        hasLoadedFriendsRef.current = true;
+      }, 500);
+      return () => clearTimeout(timer);
+    } else if (!isFriendsTab) {
+      friendsTabActiveRef.current = false;
+    }
+  }, [activeTab, user?.id, token]); // Removed functions from dependencies to prevent infinite loops
+
+  // Poll for friends updates regardless of tab (for real-time online count across all tabs)
+  // Reduced frequency to avoid excessive reloading
+  useEffect(() => {
+    if (!user?.id || !token || !loadFriendsRef.current) return;
+
+    // Poll every 5 minutes instead of every minute to reduce API calls and UI flicker
+    const friendsInterval = setInterval(() => {
+      loadFriendsRef.current?.();
+    }, 300000); // Poll every 5 minutes (300000ms)
+
+    return () => clearInterval(friendsInterval);
+  }, [user?.id, token]); // Only restart if user or token changes
+
+  // Poll for requests updates only when Friends tab is active
+  // Reduced frequency to avoid excessive reloading
+  useEffect(() => {
+    if (activeTab !== 'FRIENDS' || !user?.id || !token || !loadPendingRequestsCountRef.current) return;
+
+    // Poll every 2 minutes instead of every minute
+    const requestsInterval = setInterval(() => {
+      loadPendingRequestsCountRef.current?.();
+    }, 120000); // Poll every 2 minutes (120000ms)
+
+    return () => clearInterval(requestsInterval);
+  }, [activeTab, user?.id, token]); // Restart when tab changes or user/token changes
 
   // Refresh friends list when a request is accepted
-  const handleRequestAccepted = () => {
+  const handleRequestAccepted = useCallback(() => {
     loadPendingRequestsCount();
     loadFriends(); // Reload friends list after accepting request
-  };
+  }, [loadPendingRequestsCount, loadFriends]);
 
   const renderContent = () => {
     switch (activeTab) {

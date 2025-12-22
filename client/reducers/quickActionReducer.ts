@@ -38,7 +38,7 @@ export const initialQuickActionState: QuickActionState = {
   },
   locationState: {
     shareMyLocation: true,
-    shareWithEveryone: true,
+    shareWithEveryone: false, // Default OFF - will be implemented later
   },
 };
 

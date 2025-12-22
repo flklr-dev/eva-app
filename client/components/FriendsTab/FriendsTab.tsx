@@ -72,9 +72,23 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
     }));
   }, [friends, userLocation]);
 
-  // Notify parent component when distances are calculated
+  // Calculate online friends count
+  const onlineFriendsCount = useMemo(() => {
+    return friends.filter(friend => friend.status === 'online').length;
+  }, [friends]);
+
+  // Notify parent component when distances are calculated - use ref to avoid infinite loop
+  const prevFriendsWithDistanceRef = React.useRef<Array<Friend & { distance: number }>>([]);
   useEffect(() => {
-    if (friendsWithDistance.length > 0 && onFriendsWithDistanceChange) {
+    // Only call callback if the friendsWithDistance actually changed (deep comparison by length and first item)
+    const hasChanged = 
+      friendsWithDistance.length !== prevFriendsWithDistanceRef.current.length ||
+      (friendsWithDistance.length > 0 && 
+       prevFriendsWithDistanceRef.current.length > 0 &&
+       friendsWithDistance[0].id !== prevFriendsWithDistanceRef.current[0].id);
+    
+    if (hasChanged && friendsWithDistance.length > 0 && onFriendsWithDistanceChange) {
+      prevFriendsWithDistanceRef.current = friendsWithDistance;
       onFriendsWithDistanceChange(friendsWithDistance);
     }
   }, [friendsWithDistance, onFriendsWithDistanceChange]);
@@ -118,11 +132,12 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
       return propInitialRegion;
     }
 
+    // Default fallback - generic location while loading
     return {
-      latitude: 6.950,
-      longitude: 126.220,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
+      latitude: 14.5995, // Manila, Philippines
+      longitude: 120.9842,
+      latitudeDelta: 0.1,
+      longitudeDelta: 0.1,
     };
   }, [userLocation, sharedInitialRegion, propInitialRegion]);
   
@@ -271,7 +286,7 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
         {locationPermissionGranted && (
           <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
             <StatusChip
-              friendCount={friends.length}
+              friendCount={onlineFriendsCount}
               onDropdownPress={() => console.log('Dropdown pressed')}
             />
             <BluetoothIndicator isConnected={isBluetoothConnected} />

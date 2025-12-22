@@ -6,13 +6,40 @@ import {
   updateProfile,
   updateProfilePicture,
   updateSettings,
-  deleteAccount
+  deleteAccount,
+  updateLocation
 } from '../controllers/profileController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
 const router = Router();
 
-// All routes require authentication
+// Public route to get user profile by ID (no authentication required)
+// Used for displaying user info in friend invitation dialogs
+router.get('/public/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { getUserProfile } = await import('../services/profileService');
+    
+    const profile = await getUserProfile(userId);
+    if (!profile) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    
+    // Return only public fields (not password, sensitive settings, etc.)
+    res.json({
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      profilePicture: profile.profilePicture,
+    });
+  } catch (error) {
+    console.error('Get public profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// All other routes require authentication
 router.use(authMiddleware);
 
 // Validation rules
@@ -51,11 +78,25 @@ const updateSettingsValidation = [
     .withMessage('notificationsEnabled must be a boolean'),
 ];
 
+const updateLocationValidation = [
+  body('latitude')
+    .isNumeric()
+    .withMessage('Latitude must be a number'),
+  body('longitude')
+    .isNumeric()
+    .withMessage('Longitude must be a number'),
+  body('accuracy')
+    .optional()
+    .isNumeric()
+    .withMessage('Accuracy must be a number'),
+];
+
 // Routes
 router.get('/', getProfile);
 router.patch('/', updateProfileValidation, updateProfile);
 router.patch('/picture', updateProfilePicture); // TODO: Implement with chosen storage strategy
 router.patch('/settings', updateSettingsValidation, updateSettings);
+router.patch('/location', updateLocationValidation, updateLocation);
 router.delete('/', deleteAccount);
 
 export default router;

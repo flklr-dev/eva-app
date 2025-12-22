@@ -1,6 +1,27 @@
 import { Types } from 'mongoose';
 import Friend, { IFriend } from '../models/Friend';
 import User, { IUser } from '../models/User';
+import { emitFriendRequestToUser, emitFriendRequestResponseToUser } from '../webSocket/socketManager';
+import { sendPushNotificationToUser } from './notificationService';
+
+/**
+ * Constants for offline detection
+ */
+const OFFLINE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes of inactivity = offline
+
+/**
+ * Helper function to determine if a user is online based on lastSeen timestamp
+ * A user is considered online if they've been seen within the last 10 minutes
+ */
+export const isUserOnline = (lastSeen?: Date): boolean => {
+  if (!lastSeen) {
+    return false; // No lastSeen = offline
+  }
+  
+  const now = new Date();
+  const timeDifference = now.getTime() - new Date(lastSeen).getTime();
+  return timeDifference < OFFLINE_THRESHOLD_MS;
+};
 
 export interface FriendRequest {
   requesterId: string;
@@ -9,6 +30,7 @@ export interface FriendRequest {
 
 export interface FriendWithDetails {
   id: string;
+  requestId?: string; // The actual friend request document ID (only for pending requests)
   name: string;
   email: string;
   profilePicture?: string;
@@ -16,21 +38,56 @@ export interface FriendWithDetails {
   isRequester: boolean;
   createdAt: Date;
   isActive?: boolean;
+  isOnline?: boolean; // NEW: Derived from lastSeen timestamp
   lastSeen?: Date;
+  lastKnownLocation?: {
+    coordinates: {
+      lat: number;
+      lng: number;
+    };
+    timestamp: Date;
+    accuracy?: number;
+  };
 }
 
 /**
  * Send a friend request
+ * UPDATED: Now with comprehensive debugging and WebSocket notifications
  */
 export const sendFriendRequest = async (requesterId: string, recipientId: string): Promise<IFriend> => {
-  // Validate both users exist
+  // Input validation
+  if (!requesterId || !recipientId) {
+    throw new Error('Requester and recipient IDs are required');
+  }
+
+  if (!Types.ObjectId.isValid(requesterId) || !Types.ObjectId.isValid(recipientId)) {
+    throw new Error('Invalid user ID format');
+  }
+
+  if (requesterId === recipientId) {
+    throw new Error('Cannot send friend request to yourself');
+  }
+
+  // Validate both users exist and are active
   const [requester, recipient] = await Promise.all([
     User.findById(requesterId),
     User.findById(recipientId),
   ]);
 
-  if (!requester || !recipient) {
-    throw new Error('User not found');
+  if (!requester) {
+    throw new Error('Requester user not found');
+  }
+
+  if (!recipient) {
+    throw new Error('Recipient user not found');
+  }
+
+  if (!requester.isActive) {
+    throw new Error('Your account is not active');
+  }
+
+  if (!recipient.isActive) {
+    throw new Error('Recipient account is not active');
   }
 
   // Check if friend request already exists (in either direction)
@@ -42,20 +99,52 @@ export const sendFriendRequest = async (requesterId: string, recipientId: string
   });
 
   if (existingRequest) {
-    if (existingRequest.status === 'accepted') {
-      throw new Error('Already friends');
+    switch (existingRequest.status) {
+      case 'accepted':
+        throw new Error('You are already friends with this user');
+      case 'pending':
+        // Check who sent the request
+        const isRequester = existingRequest.requesterId.toString() === requesterId;
+        if (isRequester) {
+          throw new Error('You already have a pending friend request to this user');
+        } else {
+          throw new Error('This user already has a pending friend request to you');
+        }
+      case 'rejected':
+        // Allow resending if previously rejected
+        existingRequest.status = 'pending';
+        existingRequest.requesterId = new Types.ObjectId(requesterId);
+        existingRequest.recipientId = new Types.ObjectId(recipientId);
+        existingRequest.updatedAt = new Date();
+        return await existingRequest.save();
+      case 'blocked':
+        throw new Error('Unable to send friend request to this user');
+      default:
+        throw new Error('Invalid friend request status');
     }
-    if (existingRequest.status === 'pending') {
-      throw new Error('Friend request already pending');
-    }
-    if (existingRequest.status === 'blocked') {
-      throw new Error('Cannot send friend request');
-    }
-    // If previously rejected, update to pending
-    existingRequest.status = 'pending';
-    existingRequest.requesterId = new Types.ObjectId(requesterId);
-    existingRequest.recipientId = new Types.ObjectId(recipientId);
-    return await existingRequest.save();
+  }
+
+  // Additional validation: Check if users have reached any limits
+  // Rate limiting: Check how many friend requests sent in the last 24 hours
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const recentRequestsCount = await Friend.countDocuments({
+    requesterId: requesterId,
+    createdAt: { $gte: oneDayAgo }
+  });
+
+  // Allow maximum 10 friend requests per day to prevent spam
+  if (recentRequestsCount >= 10) {
+    throw new Error('Too many friend requests sent today. Please try again tomorrow.');
+  }
+
+  // Check if recipient has too many pending requests
+  const recipientPendingCount = await Friend.countDocuments({
+    recipientId: recipientId,
+    status: 'pending'
+  });
+
+  if (recipientPendingCount >= 50) {
+    throw new Error('This user has too many pending friend requests');
   }
 
   // Create new friend request
@@ -65,7 +154,46 @@ export const sendFriendRequest = async (requesterId: string, recipientId: string
     status: 'pending',
   });
 
-  return await friendRequest.save();
+  const savedRequest = await friendRequest.save();
+  console.log('[FriendService] ========== FRIEND REQUEST SAVED ==========');
+  console.log('[FriendService] Request ID:', savedRequest._id.toString());
+  console.log('[FriendService] Requester:', requesterId);
+  console.log('[FriendService] Recipient:', recipientId);
+
+  // Emit WebSocket event to notify recipient
+  console.log('[FriendService] About to emit WebSocket event and send push notification');
+  try {
+    console.log('[FriendService] Calling emitFriendRequestToUser...');
+    emitFriendRequestToUser(recipientId, {
+      requestId: savedRequest._id.toString(),
+      senderId: requesterId,
+      senderName: requester.name,
+      senderEmail: requester.email,
+      senderProfilePicture: requester.profilePicture,
+      timestamp: new Date().toISOString()
+    });
+    console.log('[FriendService] ✓ emitFriendRequestToUser called');
+    
+    // Send push notification to recipient
+    console.log('[FriendService] Calling sendPushNotificationToUser...');
+    await sendPushNotificationToUser(
+      recipientId,
+      'New Friend Request',
+      `${requester.name} wants to be your friend`,
+      {
+        eventType: 'friend_request_received',
+        senderId: requesterId,
+        requestId: savedRequest._id.toString(),
+      }
+    );
+    console.log('[FriendService] ✓ sendPushNotificationToUser called');
+  } catch (error) {
+    console.error('[FriendService] ✗ ERROR in WebSocket/notification section:', error);
+    console.error('[FriendService] Error details:', error);
+  }
+  console.log('[FriendService] =============================================');
+
+  return savedRequest;
 };
 
 /**
@@ -84,6 +212,7 @@ export const getFriendRequests = async (userId: string): Promise<{
     const recipient = request.recipientId as unknown as IUser;
     return {
       id: recipient._id.toString(),
+      requestId: request._id.toString(),
       name: recipient.name,
       email: recipient.email,
       profilePicture: recipient.profilePicture,
@@ -97,6 +226,7 @@ export const getFriendRequests = async (userId: string): Promise<{
     const requester = request.requesterId as unknown as IUser;
     return {
       id: requester._id.toString(),
+      requestId: request._id.toString(),
       name: requester.name,
       email: requester.email,
       profilePicture: requester.profilePicture,
@@ -128,12 +258,48 @@ export const respondToFriendRequest = async (
     throw new Error('Unauthorized');
   }
 
+  // Additional validation
+  if (friendRequest.requesterId.toString() === userId) {
+    throw new Error('Cannot respond to your own friend request');
+  }
+
   if (friendRequest.status !== 'pending') {
     throw new Error('Friend request is not pending');
   }
 
   friendRequest.status = action === 'accept' ? 'accepted' : 'rejected';
-  return await friendRequest.save();
+  const updatedRequest = await friendRequest.save();
+
+  // Emit WebSocket event to notify requester
+  try {
+    // Get responder info
+    const responder = await User.findById(userId).select('name email');
+    if (responder) {
+      emitFriendRequestResponseToUser(friendRequest.requesterId.toString(), {
+        requestId: updatedRequest._id.toString(),
+        responderId: userId,
+        responderName: responder.name,
+        action: action,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Send push notification to requester
+      await sendPushNotificationToUser(
+        friendRequest.requesterId.toString(),
+        action === 'accept' ? 'Friend Request Accepted' : 'Friend Request Declined',
+        `${responder.name} ${action === 'accept' ? 'accepted' : 'declined'} your friend request`,
+        {
+          eventType: `friend_request_${action}`,
+          responderId: userId,
+          requestId: updatedRequest._id.toString(),
+        }
+      );
+    }
+  } catch (error) {
+    console.error('Error emitting WebSocket response event or sending push notification:', error);
+  }
+
+  return updatedRequest;
 };
 
 /**
@@ -146,15 +312,21 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
       { recipientId: userId, status: 'accepted' },
     ],
   })
-    .populate('requesterId', 'name email profilePicture isActive lastSeen')
-    .populate('recipientId', 'name email profilePicture isActive lastSeen')
+    .populate('requesterId', 'name email profilePicture isActive lastSeen lastKnownLocation')
+    .populate('recipientId', 'name email profilePicture isActive lastSeen lastKnownLocation')
     .sort({ updatedAt: -1 });
 
   const friends = friendships.map((friendship) => {
-    const isRequester = friendship.requesterId.toString() === userId;
-    const friendUser = isRequester 
-      ? (friendship.recipientId as unknown as IUser)
-      : (friendship.requesterId as unknown as IUser);
+    // After populate, requesterId/recipientId are User objects, not ObjectIds
+    // We need to access the _id property to get the actual ID for comparison
+    const requesterUser = friendship.requesterId as unknown as IUser;
+    const recipientUser = friendship.recipientId as unknown as IUser;
+    
+    const isRequester = requesterUser._id.toString() === userId;
+    const friendUser = isRequester ? recipientUser : requesterUser;
+
+    // Determine online status based on lastSeen timestamp
+    const isOnline = isUserOnline(friendUser.lastSeen);
 
     return {
       id: friendUser._id.toString(),
@@ -165,7 +337,9 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
       isRequester,
       createdAt: friendship.createdAt,
       isActive: friendUser.isActive,
+      isOnline, // NEW: Determined from lastSeen
       lastSeen: friendUser.lastSeen,
+      lastKnownLocation: friendUser.lastKnownLocation,
     };
   });
 
@@ -176,6 +350,15 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
  * Remove a friend (unfriend)
  */
 export const removeFriend = async (userId: string, friendId: string): Promise<void> => {
+  // Input validation
+  if (!friendId || !Types.ObjectId.isValid(friendId)) {
+    throw new Error('Invalid friend ID');
+  }
+
+  if (userId === friendId) {
+    throw new Error('Cannot remove yourself as a friend');
+  }
+
   const friendship = await Friend.findOne({
     $or: [
       { requesterId: userId, recipientId: friendId, status: 'accepted' },
@@ -194,23 +377,38 @@ export const removeFriend = async (userId: string, friendId: string): Promise<vo
  * Get friend details with location (if shared)
  */
 export const getFriendDetails = async (userId: string, friendId: string): Promise<FriendWithDetails & { distance?: number }> => {
+  // Input validation
+  if (!friendId || !Types.ObjectId.isValid(friendId)) {
+    throw new Error('Invalid friend ID');
+  }
+
+  if (userId === friendId) {
+    throw new Error('Cannot get details for yourself');
+  }
+
   const friendship = await Friend.findOne({
     $or: [
       { requesterId: userId, recipientId: friendId, status: 'accepted' },
       { requesterId: friendId, recipientId: userId, status: 'accepted' },
     ],
   })
-    .populate('requesterId', 'name email profilePicture isActive lastSeen')
-    .populate('recipientId', 'name email profilePicture isActive lastSeen');
+    .populate('requesterId', 'name email profilePicture isActive lastSeen lastKnownLocation')
+    .populate('recipientId', 'name email profilePicture isActive lastSeen lastKnownLocation');
 
   if (!friendship) {
     throw new Error('Friendship not found');
   }
 
-  const isRequester = friendship.requesterId.toString() === userId;
-  const friendUser = isRequester 
-    ? (friendship.recipientId as unknown as IUser)
-    : (friendship.requesterId as unknown as IUser);
+  // After populate, requesterId/recipientId are User objects, not ObjectIds
+  // We need to access the _id property to get the actual ID for comparison
+  const requesterUser = friendship.requesterId as unknown as IUser;
+  const recipientUser = friendship.recipientId as unknown as IUser;
+  
+  const isRequester = requesterUser._id.toString() === userId;
+  const friendUser = isRequester ? recipientUser : requesterUser;
+
+  // Determine online status based on lastSeen timestamp
+  const isOnline = isUserOnline(friendUser.lastSeen);
 
   return {
     id: friendUser._id.toString(),
@@ -221,7 +419,9 @@ export const getFriendDetails = async (userId: string, friendId: string): Promis
     isRequester,
     createdAt: friendship.createdAt,
     isActive: friendUser.isActive,
+    isOnline, // NEW: Determined from lastSeen
     lastSeen: friendUser.lastSeen,
+    lastKnownLocation: friendUser.lastKnownLocation,
   };
 };
 

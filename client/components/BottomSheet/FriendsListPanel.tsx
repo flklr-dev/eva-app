@@ -105,6 +105,7 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
                 country={friend.country}
                 profilePicture={friend.profilePicture}
                 distance={friend.distance}
+                status={friend.status}
                 onPress={() => onFriendPress?.(friend)}
               />
               {index < friends.length - 1 && <View style={styles.separator} />}

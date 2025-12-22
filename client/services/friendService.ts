@@ -23,11 +23,19 @@ const getAuthToken = async (tokenFromContext?: string | null): Promise<string | 
  * Send a friend request
  */
 export const sendFriendRequest = async (recipientId: string, tokenFromContext?: string | null): Promise<void> => {
+  console.log('[FriendService] ========== SEND FRIEND REQUEST ==========');
+  console.log('[FriendService] Recipient ID:', recipientId);
+  console.log('[FriendService] Has token from context:', !!tokenFromContext);
+  
   const token = await getAuthToken(tokenFromContext);
+  console.log('[FriendService] Got auth token:', !!token);
+  
   if (!token) {
+    console.error('[FriendService] No authentication token available');
     throw new Error('Not authenticated');
   }
 
+  console.log('[FriendService] Making POST request to:', `${API_BASE_URL}/api/friends/request`);
   const response = await fetch(`${API_BASE_URL}/api/friends/request`, {
     method: 'POST',
     headers: {
@@ -37,10 +45,18 @@ export const sendFriendRequest = async (recipientId: string, tokenFromContext?: 
     body: JSON.stringify({ recipientId }),
   });
 
+  console.log('[FriendService] Response status:', response.status);
+  console.log('[FriendService] Response ok:', response.ok);
+  
   if (!response.ok) {
     const error = await response.json();
+    console.error('[FriendService] Error response:', error);
     throw new Error(error.message || 'Failed to send friend request');
   }
+  
+  const responseData = await response.json();
+  console.log('[FriendService] ✓ Success response:', responseData);
+  console.log('[FriendService] =============================================');
 };
 
 /**
@@ -58,6 +74,7 @@ export const getFriendRequests = async (tokenFromContext?: string | null): Promi
     status: string;
     isRequester: boolean;
     createdAt: string;
+    requestId?: string;
   }>;
   received: Array<{
     id: string;
@@ -67,6 +84,7 @@ export const getFriendRequests = async (tokenFromContext?: string | null): Promi
     status: string;
     isRequester: boolean;
     createdAt: string;
+    requestId?: string;
   }>;
 }> => {
   const token = await getAuthToken(tokenFromContext);
@@ -130,7 +148,16 @@ export const getFriends = async (): Promise<
     isRequester: boolean;
     createdAt: string;
     isActive?: boolean;
+    isOnline?: boolean; // NEW: Derived from lastSeen on server
     lastSeen?: string;
+    lastKnownLocation?: {
+      coordinates: {
+        lat: number;
+        lng: number;
+      };
+      timestamp: string;
+      accuracy?: number;
+    };
   }>
 > => {
   const token = await getAuthToken();
@@ -154,7 +181,16 @@ export const getFriendsWithToken = async (token: string): Promise<
     isRequester: boolean;
     createdAt: string;
     isActive?: boolean;
+    isOnline?: boolean; // NEW: Derived from lastSeen on server
     lastSeen?: string;
+    lastKnownLocation?: {
+      coordinates: {
+        lat: number;
+        lng: number;
+      };
+      timestamp: string;
+      accuracy?: number;
+    };
   }>
 > => {
   const url = `${API_BASE_URL}/api/friends`;

@@ -22,18 +22,40 @@ export const ProfileTab: React.FC = () => {
   const { width: winW, height: winH } = useWindowDimensions();
   const isSmall = winW < 360;
   const isMedium = winW < 400;
+
   
-  // Calculate bottom padding dynamically based on screen height
-  // For taller screens, we need more padding to push buttons to bottom
+  // Calculate bottom padding dynamically based on screen height and platform
   // Bottom nav bar is ~64px, safe area bottom varies by device
+  // On Android, we need extra padding for system navigation bar
   const bottomNavHeight = 64;
   const safeAreaBottom = insets.bottom;
-  // Calculate padding to position buttons at the very bottom
-  // On taller screens, add more padding to account for extra screen space
-  const isTallScreen = winH > 800;
-  const bottomActionsPaddingBottom = safeAreaBottom + bottomNavHeight + (isTallScreen ? SPACING.LG : SPACING.MD);
-  // Use minimal scroll content padding - bottomActions will use marginTop: 'auto' to push to bottom
-  const scrollContentPaddingBottom = bottomNavHeight + safeAreaBottom + SPACING.MD;
+
+  // Extra padding for Android system navigation bar and small screens
+  const isAndroid = Platform.OS === 'android';
+  const isSmallScreen = winH < 700; // Very small screens
+  const extraPadding = isAndroid ? (isSmallScreen ? SPACING.XL * 2 : SPACING.XL) : 0;
+
+  // Calculate padding to position buttons above the bottom navigation
+  // On smaller screens and Android, add more padding
+  const calculatedPadding = safeAreaBottom + bottomNavHeight + extraPadding + SPACING.LG;
+  // Ensure minimum padding for very small screens
+  const minPadding = isSmallScreen ? 120 : 80; // Minimum padding for small screens
+  const bottomActionsPaddingBottom = Math.max(calculatedPadding, minPadding);
+
+  // Debug logging for small screens
+  if (isSmallScreen) {
+    console.log('[ProfileTab] Screen dimensions:', { width: winW, height: winH });
+    console.log('[ProfileTab] Padding calculation:', {
+      safeAreaBottom,
+      bottomNavHeight,
+      extraPadding,
+      calculatedPadding,
+      minPadding,
+      finalPadding: bottomActionsPaddingBottom
+    });
+  }
+  // Ensure scroll content has enough padding to not be covered by bottom nav
+  const scrollContentPaddingBottom = bottomActionsPaddingBottom + SPACING.MD;
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedName, setEditedName] = useState(user?.name || '');
@@ -304,7 +326,7 @@ export const ProfileTab: React.FC = () => {
       }
 
       // Reset form state
-      setIsEditMode(false);
+    setIsEditMode(false);
       setSelectedProfilePictureUri(null);
 
       // Show success message
@@ -366,7 +388,7 @@ export const ProfileTab: React.FC = () => {
       // Logout user after account deletion
       await logout();
 
-      setDeleteModalVisible(false);
+    setDeleteModalVisible(false);
       Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
     } catch (error) {
       console.error('Failed to delete account:', error);
@@ -417,7 +439,7 @@ export const ProfileTab: React.FC = () => {
         showsVerticalScrollIndicator={false}
         bounces={false}
         alwaysBounceVertical={false}
-        scrollEnabled={false}
+        scrollEnabled={isSmallScreen || winH < 750} // Enable scrolling on small screens
       >
         {isEditMode ? (
           /* Edit Mode Content */
@@ -444,11 +466,18 @@ export const ProfileTab: React.FC = () => {
                       source={{ uri: user.profilePicture }}
                       style={styles.profilePicture}
                       resizeMode="cover"
+                      onError={(error) => {
+                        console.error('[ProfileTab] Profile picture load error in edit mode:', error);
+                        console.log('[ProfileTab] Failed URL:', user.profilePicture);
+                      }}
+                      onLoad={() => {
+                        console.log('[ProfileTab] Profile picture loaded successfully in edit mode');
+                      }}
                     />
                   ) : (
-                    <View style={styles.profileInitials}>
-                      <Text style={styles.profileInitialsText}>{userInitials}</Text>
-                    </View>
+                  <View style={styles.profileInitials}>
+                    <Text style={styles.profileInitialsText}>{userInitials}</Text>
+                  </View>
                   )}
                   {isUploadingPicture && (
                     <View style={styles.uploadOverlay}>
@@ -457,7 +486,7 @@ export const ProfileTab: React.FC = () => {
                         size={20}
                         color={COLORS.BACKGROUND_WHITE}
                       />
-                    </View>
+                </View>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -513,11 +542,18 @@ export const ProfileTab: React.FC = () => {
                     source={{ uri: user.profilePicture }}
                     style={styles.profilePicture}
                     resizeMode="cover"
+                    onError={(error) => {
+                      console.error('[ProfileTab] Profile picture load error in view mode:', error);
+                      console.log('[ProfileTab] Failed URL:', user.profilePicture);
+                    }}
+                    onLoad={() => {
+                      console.log('[ProfileTab] Profile picture loaded successfully in view mode');
+                    }}
                   />
                 ) : (
-                  <View style={styles.profileInitials}>
-                    <Text style={styles.profileInitialsText}>{userInitials}</Text>
-                  </View>
+                <View style={styles.profileInitials}>
+                  <Text style={styles.profileInitialsText}>{userInitials}</Text>
+                </View>
                 )}
               </View>
 

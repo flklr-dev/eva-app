@@ -7,6 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppNavigator } from './navigation/AppNavigator';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { initializeDeepLinkListener, parseDeepLink, handleFriendInvite } from './utils/deepLinkHandler';
+import { GlobalNotificationProvider } from './context/GlobalNotificationContext';
+import { GlobalFriendRequestNotification } from './components/GlobalFriendRequestNotification';
 
 /**
  * Deep Link Handler Component
@@ -62,14 +64,18 @@ const DeepLinkHandler: React.FC = () => {
       // Only process if clipboard changed and contains EVA-ALERT format
       if (clipboardText && clipboardText !== lastClipboardCheck.current) {
         lastClipboardCheck.current = clipboardText;
+        console.log('[App] Clipboard changed, checking for EVA-ALERT codes:', clipboardText.substring(0, 50) + '...');
         
         const linkData = parseDeepLink(clipboardText);
         if (linkData.type === 'invite' && linkData.userId) {
-          console.log('[App] Found EVA-ALERT code in clipboard:', linkData.userId);
+          console.log('[App] ✅ Found EVA-ALERT code in clipboard:', linkData.userId);
           await handleInviteUserId(linkData.userId);
-          // Clear clipboard after processing
+          // Clear clipboard after processing to prevent re-processing
           await Clipboard.setStringAsync('');
           lastClipboardCheck.current = '';
+          console.log('[App] ✅ Cleared clipboard after processing invite');
+        } else {
+          console.log('[App] Clipboard does not contain EVA-ALERT code');
         }
       }
     } catch (error) {
@@ -94,16 +100,20 @@ const DeepLinkHandler: React.FC = () => {
     // Monitor clipboard when app comes to foreground (for iPhone camera QR codes)
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
+        console.log('[App] App became active, checking clipboard for EVA-ALERT codes');
         // Check clipboard when app becomes active
         checkClipboard();
         
-        // Set up interval to check clipboard every 2 seconds while app is active
+        // Start periodic clipboard checking for development
         if (clipboardCheckInterval.current) {
           clearInterval(clipboardCheckInterval.current);
         }
-        clipboardCheckInterval.current = setInterval(checkClipboard, 2000);
-      } else {
+        clipboardCheckInterval.current = setInterval(() => {
+          checkClipboard();
+        }, 2000); // Check every 2 seconds when active
+      } else if (nextAppState === 'background' || nextAppState === 'inactive') {
         // Clear interval when app goes to background
+        console.log('[App] App went to background, stopping clipboard monitoring');
         if (clipboardCheckInterval.current) {
           clearInterval(clipboardCheckInterval.current);
           clipboardCheckInterval.current = null;
@@ -151,9 +161,12 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <DeepLinkHandler />
-        <StatusBar style="dark" />
-        <AppNavigator />
+        <GlobalNotificationProvider>
+          <DeepLinkHandler />
+          <StatusBar style="dark" />
+          <GlobalFriendRequestNotification />
+          <AppNavigator />
+        </GlobalNotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

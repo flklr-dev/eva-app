@@ -3,6 +3,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import { initializeWebSocket } from './webSocket/socketManager';
 import authRoutes from './routes/authRoutes';
 import adminAuthRoutes from './routes/adminAuthRoutes';
 import notificationRoutes from './routes/notifications';
@@ -80,9 +83,8 @@ app.use(cors({
       return;
     }
     
-    // In development, allow local network IPs
-    if (process.env.NODE_ENV !== 'production' && 
-        (origin.startsWith('http://192.168.') || origin.startsWith('http://127.'))) {
+    // Allow local network IPs (for development and testing)
+    if (origin.startsWith('http://192.168.') || origin.startsWith('http://127.') || origin.startsWith('http://10.')) {
       callback(null, true);
       return;
     }
@@ -115,7 +117,7 @@ const connectDB = async () => {
 
 // Invite route - serves HTML page for QR code scanning
 // This allows iPhone Camera to recognize the QR code as a valid URL
-app.get('/invite/:userId', (req, res) => {
+app.get('/invite/:userId', async (req, res) => {
   console.log('✓ /invite/:userId route hit - userId:', req.params.userId);
   const { userId } = req.params;
   const inviteCode = `EVA-ALERT:${userId}`;
@@ -142,6 +144,21 @@ app.get('/invite/:userId', (req, res) => {
         </body>
       </html>
     `);
+  }
+
+  // Fetch user details to display in the invitation page
+  let userName = 'Friend';
+  let userEmail = '';
+  try {
+    const User = require('./models/User').default;
+    const user = await User.findById(userId).select('name email');
+    if (user) {
+      userName = user.name || 'Friend';
+      userEmail = user.email || '';
+      console.log('✓ User details fetched for invite page:', userName);
+    }
+  } catch (error) {
+    console.log('⚠ Could not fetch user details for invite page, using default');
   }
 
   // HTML page that attempts to open the app via deep link
@@ -176,9 +193,27 @@ app.get('/invite/:userId', (req, res) => {
             color: #333;
           }
           h1 {
-            margin: 0 0 20px 0;
+            margin: 0 0 10px 0;
             color: #333;
             font-size: 24px;
+          }
+          .user-info {
+            background: #f3f4f6;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+          }
+          .user-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+          }
+          .user-email {
+            font-size: 13px;
+            color: #6b7280;
+            margin: 4px 0 0 0;
           }
           p {
             color: #666;
@@ -245,25 +280,26 @@ app.get('/invite/:userId', (req, res) => {
       <body>
         <div class="container">
           <h1>Add Friend</h1>
+          <div class="user-info">
+            <p class="user-name">${userName}</p>
+          </div>
           <p>Opening EVA Alert app...</p>
           <div class="spinner"></div>
-          <p style="font-size: 14px; margin-top: 20px;">If the app doesn't open, tap the button below:</p>
-          <button class="button" onclick="openApp()">Open in EVA Alert</button>
-          <p class="subtle">If you’re using Expo Go (or the app still won’t open), copy this code and open EVA Alert:</p>
+          <p style="font-size: 14px; margin-top: 20px;">Tap below to copy the invitation code:</p>
+          <button class="button" onclick="openApp()">Copy Invitation Code</button>
+          <p class="subtle">Then open the EVA Alert app - the invitation will be processed automatically.</p>
           <div class="code" id="inviteCode">${inviteCode}</div>
-          <button class="button" style="margin-top: 12px;" onclick="copyCode()">Copy Code</button>
           <div class="status" id="status"></div>
         </div>
         <script>
-          // Deep link to open the app
-          const deepLink = 'eva-alert://invite/${userId}';
+          // Copy invitation code to clipboard and provide instructions
           const inviteCode = '${inviteCode}';
           const statusEl = document.getElementById('status');
           
-          // Try to open the app immediately
           function openApp() {
-            window.location.href = deepLink;
-            statusEl.textContent = 'If nothing happens, copy the code below and open EVA Alert.';
+            copyCode();
+            statusEl.textContent = '✅ Code copied! Now open the EVA Alert app - the invitation will be processed automatically.';
+            statusEl.className = 'status success';
           }
 
           async function copyCode() {
@@ -362,14 +398,58 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 // In development, listen on all interfaces (0.0.0.0) to accept connections from network
 const HOST = '0.0.0.0';
 
+// Create HTTP server
+const server = createServer(app);
+
+// Initialize Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: (origin, callback) => {
+      const allowedOrigins = getAllowedOrigins();
+      
+      // Allow requests with no origin (mobile apps, Postman, same-origin)
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      
+      // Check exact match first
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      
+      // In production, allow ELB health checks
+      if (process.env.NODE_ENV === 'production' && origin.includes('.elb.amazonaws.com')) {
+        callback(null, true);
+        return;
+      }
+      
+      // Allow local network IPs (for development and testing)
+      if (origin.startsWith('http://192.168.') || origin.startsWith('http://127.') || origin.startsWith('http://10.')) {
+        callback(null, true);
+        return;
+      }
+      
+      console.log('Socket.IO CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  }
+});
+
+// Initialize WebSocket manager
+initializeWebSocket(io);
+
 // Cloudinary configuration is now handled above after dotenv
 
 connectDB().then(() => {
-  app.listen(PORT, HOST, () => {
+  server.listen(PORT, HOST, () => {
     const networkIP = getNetworkIP();
     console.log(`✓ Server started on http://localhost:${PORT}`);
     console.log(`✓ Server accessible on network at http://${networkIP}:${PORT}`);
     console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`✓ WebSocket server listening on ws://${networkIP}:${PORT}`);
   });
 }).catch((error) => {
   console.error('Failed to start server:', error);

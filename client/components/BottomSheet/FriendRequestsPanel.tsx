@@ -1,12 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Platform, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../constants/theme';
 import { getFriendRequests, respondToFriendRequest } from '../../services/friendService';
 import { useAuth } from '../../context/AuthContext';
+import { 
+  initializeWebSocket, 
+  disconnectWebSocket, 
+  setOnFriendRequestReceived, 
+  setOnFriendRequestResponded,
+  isWebSocketConnected 
+} from '../../services/webSocketService';
 
 interface FriendRequest {
   id: string;
+  requestId?: string; // The actual friend request document ID (only for pending requests)
   name: string;
   email: string;
   profilePicture?: string;
@@ -36,36 +44,148 @@ export const FriendRequestsPanel: React.FC<FriendRequestsPanelProps> = ({
   const [sentRequests, setSentRequests] = useState<FriendRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
+  const isLoadingRef = useRef(false);
+  const websocketInitializedRef = useRef(false);
+  const loadFriendRequestsRef = useRef<(() => Promise<void>) | null>(null);
 
   // Load friend requests
-  const loadFriendRequests = async () => {
-    if (!user || !token) return;
+  const loadFriendRequests = useCallback(async () => {
+    if (!user || !token) {
+      console.log('[FriendRequests] No user or token available');
+      return;
+    }
+
+    if (isLoadingRef.current) {
+      console.log('[FriendRequests] Already loading, skipping...');
+      return;
+    }
 
     try {
+      console.log('[FriendRequests] Loading friend requests...');
+      isLoadingRef.current = true;
       setIsLoading(true);
       // Pass token from context to avoid AsyncStorage timing issues
       const data = await getFriendRequests(token);
-      setReceivedRequests(data.received.filter(r => r.status === 'pending'));
-      setSentRequests(data.sent.filter(r => r.status === 'pending'));
+      console.log('[FriendRequests] Received data:', data);
+
+      const filteredReceived = data.received.filter(r => r.status === 'pending');
+      const filteredSent = data.sent.filter(r => r.status === 'pending');
+
+      console.log('[FriendRequests] Filtered - Received:', filteredReceived.length, 'Sent:', filteredSent.length);
+
+      setReceivedRequests(filteredReceived);
+      setSentRequests(filteredSent);
     } catch (error: any) {
-      console.error('Error loading friend requests:', error);
+      console.error('[FriendRequests] Error loading friend requests:', error);
     } finally {
       setIsLoading(false);
+      isLoadingRef.current = false;
     }
-  };
+  }, [user?.id, token]); // Only include stable dependencies
+  
+  // Store loadFriendRequests in ref to avoid stale closures
+  useEffect(() => {
+    loadFriendRequestsRef.current = loadFriendRequests;
+  }, [loadFriendRequests]);
 
   // Load requests when panel becomes visible
   useEffect(() => {
     if (visible) {
       loadFriendRequests();
+      
+      // Initialize WebSocket for real-time updates (only once)
+      if (!websocketInitializedRef.current && token) {
+        console.log('[FriendRequests] Initializing WebSocket...');
+        initializeWebSocket();
+        websocketInitializedRef.current = true;
+      }
     }
-  }, [visible, user]);
+  }, [visible, loadFriendRequests, token]);
+  
+  // Register WebSocket callbacks separately to avoid re-registration issues
+  useEffect(() => {
+    if (!visible || !token) return;
+    
+    console.log('[FriendRequests] Registering WebSocket callbacks...');
+    
+    // Register callback for real-time friend request updates
+    const cleanupFriendRequestReceived = setOnFriendRequestReceived(() => {
+      console.log('[FriendRequests] WebSocket: Friend request received, refreshing list...');
+      // Call the function directly from the latest closure
+      if (loadFriendRequestsRef.current) {
+        loadFriendRequestsRef.current();
+      }
+    });
+    
+    // Register callback for friend request responses
+    const cleanupFriendRequestResponded = setOnFriendRequestResponded(() => {
+      console.log('[FriendRequests] WebSocket: Friend request response received, refreshing list...');
+      // Call the function directly from the latest closure
+      if (loadFriendRequestsRef.current) {
+        loadFriendRequestsRef.current();
+      }
+      if (onRequestAccepted) {
+        onRequestAccepted();
+      }
+    });
+    
+    // Cleanup callbacks when component unmounts or visibility changes
+    return () => {
+      console.log('[FriendRequests] Cleaning up WebSocket callbacks...');
+      cleanupFriendRequestReceived();
+      cleanupFriendRequestResponded();
+    };
+  }, [visible, token, onRequestAccepted]);
+
+  // Auto-refresh every 30 seconds when panel is visible
+  // Note: HomeScreen also polls for updates, but keeping this for when panel is open independently
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    if (visible) {
+      interval = setInterval(() => {
+        loadFriendRequests();
+      }, 60000); // Increased to 60 seconds to reduce frequency, since HomeScreen also polls
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [visible, loadFriendRequests]); // Include memoized function
+
+  // Handle WebSocket connection status
+  useEffect(() => {
+    if (visible && token) {
+      // Check WebSocket connection status periodically
+      const checkConnection = () => {
+        const connected = isWebSocketConnected();
+        console.log('[FriendRequests] WebSocket connected:', connected);
+        if (!connected && !websocketInitializedRef.current) {
+          console.log('[FriendRequests] Reconnecting WebSocket...');
+          initializeWebSocket();
+          websocketInitializedRef.current = true;
+        }
+      };
+      
+      // Initial check after delay
+      const timer = setTimeout(checkConnection, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [visible, token]);
 
   // Handle accept/reject
-  const handleRespond = async (requestId: string, action: 'accept' | 'reject') => {
+  const handleRespond = async (friendRequestId: string, action: 'accept' | 'reject') => {
+    if (!friendRequestId) {
+      console.error('[FriendRequests] No friend request ID provided');
+      return;
+    }
+
     try {
-      setIsProcessing(requestId);
-      await respondToFriendRequest(requestId, action);
+      setIsProcessing(friendRequestId);
+      await respondToFriendRequest(friendRequestId, action);
       
       // Reload requests
       await loadFriendRequests();
@@ -86,14 +206,22 @@ export const FriendRequestsPanel: React.FC<FriendRequestsPanelProps> = ({
 
   const hasRequests = receivedRequests.length > 0 || sentRequests.length > 0;
 
+  // Removed excessive rendering logs to prevent performance issues
+  // console.log('[FriendRequests] Rendering - visible:', visible, 'hasRequests:', hasRequests, 'received:', receivedRequests.length, 'sent:', sentRequests.length, 'isLoading:', isLoading);
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Friend Requests</Text>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity onPress={loadFriendRequests} style={styles.refreshButton}>
+            <MaterialCommunityIcons name="refresh" size={20} color={COLORS.TEXT_PRIMARY} />
+          </TouchableOpacity>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <MaterialCommunityIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
         </TouchableOpacity>
+        </View>
       </View>
 
       {/* Separator */}
@@ -122,18 +250,19 @@ export const FriendRequestsPanel: React.FC<FriendRequestsPanelProps> = ({
                   <View style={styles.requestContent}>
                     <View style={styles.avatarContainer}>
                       {request.profilePicture ? (
+                        <Image
+                          source={{ uri: request.profilePicture }}
+                          style={styles.avatar}
+                          resizeMode="cover"
+                          onError={(error) => {
+                            console.log('[FriendRequests] Profile picture load error for received request:', request.id, error);
+                          }}
+                        />
+                      ) : (
                         <View style={styles.avatar}>
                           <Text style={styles.avatarText}>
                             {request.name.charAt(0).toUpperCase()}
                           </Text>
-                        </View>
-                      ) : (
-                        <View style={styles.avatar}>
-                          <MaterialCommunityIcons
-                            name="account"
-                            size={24}
-                            color={COLORS.TEXT_SECONDARY}
-                          />
                         </View>
                       )}
                     </View>
@@ -145,10 +274,16 @@ export const FriendRequestsPanel: React.FC<FriendRequestsPanelProps> = ({
                   <View style={styles.actionButtons}>
                     <TouchableOpacity
                       style={[styles.actionButton, styles.rejectButton]}
-                      onPress={() => handleRespond(request.id, 'reject')}
-                      disabled={isProcessing === request.id}
+                      onPress={() => {
+                        if (request.requestId) {
+                          handleRespond(request.requestId, 'reject');
+                        } else {
+                          console.error('[FriendRequests] Missing requestId for request:', request.id);
+                        }
+                      }}
+                      disabled={isProcessing === request.requestId || !request.requestId}
                     >
-                      {isProcessing === request.id ? (
+                      {isProcessing === request.requestId ? (
                         <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} />
                       ) : (
                         <MaterialCommunityIcons name="close" size={20} color={COLORS.TEXT_PRIMARY} />
@@ -156,8 +291,14 @@ export const FriendRequestsPanel: React.FC<FriendRequestsPanelProps> = ({
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.actionButton, styles.acceptButton]}
-                      onPress={() => handleRespond(request.id, 'accept')}
-                      disabled={isProcessing === request.id}
+                      onPress={() => {
+                        if (request.requestId) {
+                          handleRespond(request.requestId, 'accept');
+                        } else {
+                          console.error('[FriendRequests] Missing requestId for request:', request.id);
+                        }
+                      }}
+                      disabled={isProcessing === request.requestId || !request.requestId}
                     >
                       {isProcessing === request.id ? (
                         <ActivityIndicator size="small" color="#fff" />
@@ -180,18 +321,19 @@ export const FriendRequestsPanel: React.FC<FriendRequestsPanelProps> = ({
                   <View style={styles.requestContent}>
                     <View style={styles.avatarContainer}>
                       {request.profilePicture ? (
+                        <Image
+                          source={{ uri: request.profilePicture }}
+                          style={styles.avatar}
+                          resizeMode="cover"
+                          onError={(error) => {
+                            console.log('[FriendRequests] Profile picture load error for sent request:', request.id, error);
+                          }}
+                        />
+                      ) : (
                         <View style={styles.avatar}>
                           <Text style={styles.avatarText}>
                             {request.name.charAt(0).toUpperCase()}
                           </Text>
-                        </View>
-                      ) : (
-                        <View style={styles.avatar}>
-                          <MaterialCommunityIcons
-                            name="account"
-                            size={24}
-                            color={COLORS.TEXT_SECONDARY}
-                          />
                         </View>
                       )}
                     </View>
@@ -218,7 +360,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 12,
     paddingHorizontal: SPACING.MD,
-    maxHeight: 500,
+    maxHeight: 600,
+    minHeight: 200,
+    flex: 1, // Allow container to grow
   },
   header: {
     flexDirection: 'row',
@@ -234,6 +378,17 @@ const styles = StyleSheet.create({
   closeButton: {
     width: 36,
     height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+  },
+  refreshButton: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
