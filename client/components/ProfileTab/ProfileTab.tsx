@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Modal, Dimensions, useWindowDimensions, Alert, Image, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { updateProfile, deleteAccount, uploadProfilePicture } from '../../services/profileService';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
+import PhoneInput from 'react-native-phone-number-input';
 
 const { width } = Dimensions.get('window');
 
@@ -60,25 +61,48 @@ export const ProfileTab: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedName, setEditedName] = useState(user?.name || '');
   const [editedEmail, setEditedEmail] = useState(user?.email || '');
+  const [phoneValue, setPhoneValue] = useState('');
+  const [phoneCountryCode, setPhoneCountryCode] = useState('');
+  const [phoneValid, setPhoneValid] = useState(true);
+  const phoneInput = useRef<PhoneInput>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
   const [selectedProfilePictureUri, setSelectedProfilePictureUri] = useState<string | null>(null);
 
-  // Track changes
+  // Initialize phone input with user's existing phone
+  useEffect(() => {
+    if (user?.phone) {
+      setPhoneValue(user.phone);
+      // Extract country code from phone number
+      const countryCode = user.countryCode || '+63';
+      setPhoneCountryCode(countryCode);
+    }
+  }, [user]);
+
+  // Track changes and validation state
   useEffect(() => {
     const nameChanged = editedName !== (user?.name || '');
     const emailChanged = editedEmail !== (user?.email || '');
+    const phoneChanged = phoneValue !== (user?.phone || '');
     const profilePictureChanged = selectedProfilePictureUri !== null;
-    setHasChanges(nameChanged || emailChanged || profilePictureChanged);
-  }, [editedName, editedEmail, selectedProfilePictureUri, user]);
+    
+    const hasAnyChanges = nameChanged || emailChanged || phoneChanged || profilePictureChanged;
+    
+    // Phone is valid if empty (optional) or if library validates it
+    const isPhoneValidOrEmpty = phoneValue.trim() === '' || phoneValid;
+    
+    setHasChanges(hasAnyChanges && isPhoneValidOrEmpty);
+  }, [editedName, editedEmail, phoneValue, phoneValid, selectedProfilePictureUri, user]);
 
   // Reset form when exiting edit mode
   useEffect(() => {
     if (!isEditMode) {
       setEditedName(user?.name || '');
       setEditedEmail(user?.email || '');
+      setPhoneValue(user?.phone || '');
+      setPhoneCountryCode(user?.countryCode || '+63');
       setHasChanges(false);
     }
   }, [isEditMode, user]);
@@ -91,6 +115,8 @@ export const ProfileTab: React.FC = () => {
     setIsEditMode(false);
     setEditedName(user?.name || '');
     setEditedEmail(user?.email || '');
+    setPhoneValue(user?.phone || '');
+    setPhoneCountryCode(user?.countryCode || '+63');
     setSelectedProfilePictureUri(null);
   };
 
@@ -284,16 +310,38 @@ export const ProfileTab: React.FC = () => {
       return;
     }
 
+    // Phone validation (if phone is provided) - library handles validation
+    if (phoneValue.trim() !== '' && !phoneValid) {
+      Alert.alert('Error', 'Please enter a valid phone number');
+      return;
+    }
+
     try {
       // Prepare update data
       const updateData: any = {};
       if (editedName !== user?.name) updateData.name = editedName;
       if (editedEmail !== user?.email) updateData.email = editedEmail;
+      
+      // Handle phone number update
+      if (phoneValue.trim() !== '') {
+        // Get the formatted phone number from the library
+        const formattedPhone = phoneInput.current?.getNumberAfterPossiblyEliminatingZero()?.formattedNumber || phoneValue;
+        const countryCode = phoneInput.current?.getCallingCode() || phoneCountryCode;
+        
+        if (formattedPhone !== user?.phone) {
+          updateData.phone = formattedPhone;
+          updateData.countryCode = `+${countryCode}`;
+        }
+      } else if (user?.phone) {
+        // Clear phone number if it was removed
+        updateData.phone = '';
+        updateData.countryCode = '';
+      }
 
       console.log('[ProfileTab] Prepared update data:', updateData);
       console.log('[ProfileTab] Calling updateProfile...');
 
-      // Make API call for profile data (name/email)
+      // Make API call for profile data (name/email/phone)
       const updatedUser = await updateProfile(updateData, token);
 
       console.log('[ProfileTab] Profile update successful, returned user:', updatedUser);
@@ -326,7 +374,7 @@ export const ProfileTab: React.FC = () => {
       }
 
       // Reset form state
-    setIsEditMode(false);
+      setIsEditMode(false);
       setSelectedProfilePictureUri(null);
 
       // Show success message
@@ -526,6 +574,41 @@ export const ProfileTab: React.FC = () => {
                 autoCapitalize="none"
               />
             </View>
+
+            {/* Phone Field - No container, with space above */}
+            <View style={[styles.editFieldWrapper, { marginTop: SPACING.XL }]}>
+            
+              <Text style={styles.fieldLabel}>PHONE NUMBER</Text>
+              <View style={styles.fieldSeparator} />
+              <PhoneInput
+                ref={phoneInput}
+                defaultValue={phoneValue}
+                defaultCode={(phoneCountryCode.replace('+', '') || 'PH') as any}
+                layout="first"
+                onChangeText={(text) => {
+                  setPhoneValue(text);
+                }}
+                onChangeFormattedText={(text) => {
+                  setPhoneValue(text);
+                  // Validate phone number
+                  const checkValid = phoneInput.current?.isValidNumber(text);
+                  setPhoneValid(checkValid || false);
+                }}
+                containerStyle={styles.phoneInputContainerStyle}
+                textContainerStyle={styles.phoneTextContainer}
+                textInputStyle={styles.phoneTextInput}
+                codeTextStyle={styles.phoneCodeText}
+                flagButtonStyle={styles.phoneFlagButton}
+                countryPickerButtonStyle={styles.phoneCountryPickerButton}
+                placeholder="Enter phone number"
+                withDarkTheme={false}
+                withShadow={false}
+                autoFocus={false}
+              />
+              {!phoneValid && phoneValue.trim() !== '' && (
+                <Text style={styles.errorText}>Please enter a valid phone number</Text>
+              )}
+            </View>
           </>
         ) : (
           /* View Mode Content */
@@ -561,7 +644,9 @@ export const ProfileTab: React.FC = () => {
               <View style={styles.userInfo}>
                 <Text style={styles.userName}>{user?.name || 'User'}</Text>
                 <Text style={styles.userEmail}>{user?.email || 'email@example.com'}</Text>
-                <Text style={styles.userPhone}>+1 234 567 8900</Text>
+                <Text style={styles.userPhone}>
+                  {user?.phone || 'Add Phone Number'}
+                </Text>
               </View>
 
               {/* Edit Button */}
@@ -1089,6 +1174,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#007AFF', // System blue color
+  },
+  // PhoneInput library styles
+  phoneInputContainerStyle: {
+    width: '100%',
+    backgroundColor: COLORS.BACKGROUND_WHITE,
+    borderRadius: BORDER_RADIUS.SM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER_LIGHT,
+    marginTop: SPACING.SM,
+  },
+  phoneTextContainer: {
+    backgroundColor: COLORS.BACKGROUND_WHITE,
+    borderRadius: BORDER_RADIUS.SM,
+    paddingVertical: 0,
+  },
+  phoneTextInput: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+    height: 40,
+  },
+  phoneCodeText: {
+    fontSize: 16,
+    color: COLORS.TEXT_PRIMARY,
+  },
+  phoneFlagButton: {
+    width: 60,
+  },
+  phoneCountryPickerButton: {
+    paddingHorizontal: SPACING.SM,
+  },
+  errorText: {
+    fontSize: 12,
+    color: COLORS.ERROR,
+    marginTop: SPACING.XS,
+    marginLeft: SPACING.SM,
   },
 });
 
