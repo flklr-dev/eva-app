@@ -61,8 +61,8 @@ export const ProfileTab: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedName, setEditedName] = useState(user?.name || '');
   const [editedEmail, setEditedEmail] = useState(user?.email || '');
-  const [phoneValue, setPhoneValue] = useState('');
-  const [phoneCountryCode, setPhoneCountryCode] = useState('');
+  const [phoneValue, setPhoneValue] = useState(user?.phone || '');
+  const [phoneCountryCode, setPhoneCountryCode] = useState(user?.countryCode || 'PH');
   const [phoneValid, setPhoneValid] = useState(true);
   const phoneInput = useRef<PhoneInput>(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -71,15 +71,27 @@ export const ProfileTab: React.FC = () => {
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
   const [selectedProfilePictureUri, setSelectedProfilePictureUri] = useState<string | null>(null);
 
-  // Initialize phone input with user's existing phone
+  // Debug log user data on mount and updates
   useEffect(() => {
-    if (user?.phone) {
-      setPhoneValue(user.phone);
-      // Extract country code from phone number
-      const countryCode = user.countryCode || '+63';
-      setPhoneCountryCode(countryCode);
-    }
+    console.log('[ProfileTab] User data updated:', {
+      phone: user?.phone,
+      countryCode: user?.countryCode,
+      name: user?.name,
+      email: user?.email
+    });
   }, [user]);
+
+  // Initialize and update phone data when user changes
+  useEffect(() => {
+    if (user) {
+      console.log('[ProfileTab] Updating phone state from user:', user.phone, user.countryCode);
+      setPhoneValue(user.phone || '');
+      // Extract country code without '+' prefix for the library
+      const code = user.countryCode ? user.countryCode.replace('+', '') : 'PH';
+      setPhoneCountryCode(code);
+      console.log('[ProfileTab] Phone state updated:', { phoneValue: user.phone, countryCode: code });
+    }
+  }, [user?.phone, user?.countryCode]);
 
   // Track changes and validation state
   useEffect(() => {
@@ -102,12 +114,14 @@ export const ProfileTab: React.FC = () => {
       setEditedName(user?.name || '');
       setEditedEmail(user?.email || '');
       setPhoneValue(user?.phone || '');
-      setPhoneCountryCode(user?.countryCode || '+63');
+      const code = user?.countryCode ? user.countryCode.replace('+', '') : 'PH';
+      setPhoneCountryCode(code);
       setHasChanges(false);
     }
   }, [isEditMode, user]);
 
   const handleEdit = () => {
+    console.log('[ProfileTab] Entering edit mode with phone:', phoneValue, phoneCountryCode);
     setIsEditMode(true);
   };
 
@@ -116,7 +130,8 @@ export const ProfileTab: React.FC = () => {
     setEditedName(user?.name || '');
     setEditedEmail(user?.email || '');
     setPhoneValue(user?.phone || '');
-    setPhoneCountryCode(user?.countryCode || '+63');
+    const code = user?.countryCode ? user.countryCode.replace('+', '') : 'PH';
+    setPhoneCountryCode(code);
     setSelectedProfilePictureUri(null);
   };
 
@@ -324,13 +339,28 @@ export const ProfileTab: React.FC = () => {
       
       // Handle phone number update
       if (phoneValue.trim() !== '') {
-        // Get the formatted phone number from the library
-        const formattedPhone = phoneInput.current?.getNumberAfterPossiblyEliminatingZero()?.formattedNumber || phoneValue;
-        const countryCode = phoneInput.current?.getCallingCode() || phoneCountryCode;
-        
-        if (formattedPhone !== user?.phone) {
+        // Get the properly formatted phone number from the library
+        const checkValid = phoneInput.current?.isValidNumber(phoneValue);
+        if (checkValid) {
+          // Get formatted number with country code
+          const fullNumber = phoneInput.current?.getNumberAfterPossiblyEliminatingZero();
+          const callingCode = phoneInput.current?.getCallingCode();
+          
+          console.log('[ProfileTab] Phone validation:', {
+            phoneValue,
+            fullNumber,
+            callingCode,
+            isValid: checkValid
+          });
+          
+          // Use the full international format
+          const formattedPhone = fullNumber?.formattedNumber || phoneValue;
+          const countryCode = callingCode ? `+${callingCode}` : phoneCountryCode;
+          
           updateData.phone = formattedPhone;
-          updateData.countryCode = `+${countryCode}`;
+          updateData.countryCode = countryCode;
+          
+          console.log('[ProfileTab] Saving phone:', { phone: formattedPhone, countryCode });
         }
       } else if (user?.phone) {
         // Clear phone number if it was removed
@@ -582,17 +612,20 @@ export const ProfileTab: React.FC = () => {
               <View style={styles.fieldSeparator} />
               <PhoneInput
                 ref={phoneInput}
-                defaultValue={phoneValue}
-                defaultCode={(phoneCountryCode.replace('+', '') || 'PH') as any}
+                value={phoneValue}
+                defaultCode={phoneCountryCode as any}
                 layout="first"
                 onChangeText={(text) => {
+                  console.log('[ProfileTab] Phone text changed:', text);
                   setPhoneValue(text);
                 }}
                 onChangeFormattedText={(text) => {
+                  console.log('[ProfileTab] Phone formatted text changed:', text);
                   setPhoneValue(text);
                   // Validate phone number
                   const checkValid = phoneInput.current?.isValidNumber(text);
                   setPhoneValid(checkValid || false);
+                  console.log('[ProfileTab] Phone validation:', checkValid);
                 }}
                 containerStyle={styles.phoneInputContainerStyle}
                 textContainerStyle={styles.phoneTextContainer}

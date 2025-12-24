@@ -5,6 +5,7 @@ export interface ProfileUpdateData {
   name?: string;
   email?: string;
   phone?: string;
+  countryCode?: string;
   settings?: {
     shareLocation?: boolean;
     shareWithEveryone?: boolean;
@@ -18,6 +19,7 @@ export interface ProfileResponse {
   email: string;
   profilePicture?: string;
   phone?: string;
+  countryCode?: string;
   settings: {
     shareLocation: boolean;
     shareWithEveryone: boolean;
@@ -51,6 +53,7 @@ export const getUserProfile = async (userId: string): Promise<ProfileResponse | 
     email: user.email,
     profilePicture: user.profilePicture,
     phone: user.phone,
+    countryCode: user.countryCode,
     settings: user.settings,
     homeAddress: user.homeAddress,
     isActive: user.isActive,
@@ -83,6 +86,7 @@ export const updateUserProfile = async (
   if (updateData.name !== undefined) updateObj.name = updateData.name.trim();
   if (updateData.email !== undefined) updateObj.email = updateData.email.toLowerCase();
   if (updateData.phone !== undefined) updateObj.phone = updateData.phone ? updateData.phone.trim() : undefined;
+  if (updateData.countryCode !== undefined) updateObj.countryCode = updateData.countryCode ? updateData.countryCode.trim() : undefined;
 
   // Handle settings update - only update defined properties
   if (updateData.settings !== undefined) {
@@ -118,6 +122,7 @@ export const updateUserProfile = async (
     email: updatedUser.email,
     profilePicture: updatedUser.profilePicture,
     phone: updatedUser.phone,
+    countryCode: updatedUser.countryCode,
     settings: updatedUser.settings,
     homeAddress: updatedUser.homeAddress,
     isActive: updatedUser.isActive,

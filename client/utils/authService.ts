@@ -12,6 +12,8 @@ interface User {
   name: string;
   email: string;
   profilePicture?: string;
+  phone?: string;
+  countryCode?: string;
 }
 
 interface AuthResponse {
@@ -130,10 +132,12 @@ export const authService = {
       const token = await AsyncStorage.getItem(TOKEN_KEY);
       if (!token) return null;
 
-      const response = await fetch(`${CLEANED_API_BASE_URL}/api/auth/me`, {
+      // Instead of using /api/auth/me, use /api/profile to get full user data including phone and countryCode
+      const response = await fetch(`${CLEANED_API_BASE_URL}/api/profile`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,  // Fixed header format
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
 
@@ -150,7 +154,17 @@ export const authService = {
       }
 
       const data = await response.json();
-      return data.user;
+      const profileUser = data.user;
+      
+      // Map profile response to User interface
+      return {
+        id: profileUser.id,
+        name: profileUser.name,
+        email: profileUser.email,
+        profilePicture: profileUser.profilePicture,
+        phone: profileUser.phone,
+        countryCode: profileUser.countryCode,
+      };
     } catch (error) {
       console.error('Error fetching current user:', error);
       return null;

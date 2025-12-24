@@ -6,6 +6,7 @@ export interface IUser extends Document {
   email: string;
   password: string;
   phone?: string;
+  countryCode?: string;
   profilePicture?: string;
   homeAddress?: {
     address: string;
@@ -62,6 +63,10 @@ const userSchema = new Schema<IUser>(
       type: String,
       trim: true,
       sparse: true, // Allows multiple documents to have null/undefined values
+    },
+    countryCode: {
+      type: String,
+      trim: true,
     },
     profilePicture: {
       type: String,

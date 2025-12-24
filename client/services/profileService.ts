@@ -26,6 +26,7 @@ export interface UserProfile {
   email: string;
   profilePicture?: string;
   phone?: string;
+  countryCode?: string;
   settings: {
     shareLocation: boolean;
     shareWithEveryone: boolean;
@@ -47,6 +48,7 @@ export interface ProfileUpdateData {
   name?: string;
   email?: string;
   phone?: string;
+  countryCode?: string;
   settings?: {
     shareLocation?: boolean;
     shareWithEveryone?: boolean;

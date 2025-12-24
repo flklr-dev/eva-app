@@ -53,9 +53,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const storedToken = await authService.getToken();
       if (storedToken) {
         setToken(storedToken);
-        const currentUser = await authService.getCurrentUser();
+      const currentUser = await authService.getCurrentUser();
         if (currentUser) {
-          setUser(currentUser);
+          // Fetch full profile to get phone and countryCode
+          try {
+            const fullProfile = await import('../services/profileService').then(mod => mod.getProfile(storedToken));
+            setUser({
+              id: currentUser.id,
+              name: currentUser.name,
+              email: currentUser.email,
+              phone: fullProfile.phone,
+              countryCode: fullProfile.countryCode,
+              profilePicture: currentUser.profilePicture,
+            });
+          } catch (profileError) {
+            console.error('Failed to fetch full profile, using basic user data:', profileError);
+            // Fallback to basic user data
+            setUser(currentUser);
+          }
         } else {
           // Token invalid or expired
           await authService.logout();
@@ -84,9 +99,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       const response = await authService.login(email, password);
       console.log('[AuthContext] Login successful, setting token and user immediately');
-      // Set token and user immediately instead of using pendingAuth
+      // Set token immediately, then fetch full profile
       setToken(response.token);
-      setUser(response.user);
+      
+      // Fetch full profile to get phone and countryCode
+      try {
+        const fullProfile = await import('../services/profileService').then(mod => mod.getProfile(response.token));
+        setUser({
+          id: response.user.id,
+          name: response.user.name,
+          email: response.user.email,
+          phone: fullProfile.phone,
+          countryCode: fullProfile.countryCode,
+          profilePicture: response.user.profilePicture,
+        });
+      } catch (profileError) {
+        console.error('Failed to fetch full profile after login, using basic user data:', profileError);
+        // Fallback to basic user data
+        setUser(response.user);
+      }
       setPendingAuth(null);
     } catch (error: any) {
       console.log('[AuthContext] Login error:', error.message);
@@ -107,9 +138,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       const response = await authService.register(name, email, password);
       console.log('[AuthContext] Register successful, setting token and user immediately');
-      // Set token and user immediately instead of using pendingAuth
+      // Set token immediately, then fetch full profile
       setToken(response.token);
-      setUser(response.user);
+      
+      // Fetch full profile to get phone and countryCode
+      try {
+        const fullProfile = await import('../services/profileService').then(mod => mod.getProfile(response.token));
+        setUser({
+          id: response.user.id,
+          name: response.user.name,
+          email: response.user.email,
+          phone: fullProfile.phone,
+          countryCode: fullProfile.countryCode,
+          profilePicture: response.user.profilePicture,
+        });
+      } catch (profileError) {
+        console.error('Failed to fetch full profile after registration, using basic user data:', profileError);
+        // Fallback to basic user data
+        setUser(response.user);
+      }
       setPendingAuth(null);
     } catch (error: any) {
       console.log('[AuthContext] Register error:', error.message);

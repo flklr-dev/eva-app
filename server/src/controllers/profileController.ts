@@ -46,16 +46,17 @@ export const updateProfile = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    const { name, email, phone, settings } = req.body;
+    const { name, email, phone, countryCode, settings } = req.body;
     const userId = req.user?._id.toString()!;
 
-    console.log('[Server] Updating user:', userId, { name, email, phone });
+    console.log('[Server] Updating user:', userId, { name, email, phone, countryCode });
 
     // Use service layer
     const updatedProfile = await updateUserProfile(userId, {
       name,
       email,
       phone,
+      countryCode,
       settings,
     });
 
