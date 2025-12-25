@@ -5,6 +5,7 @@ import { StatusChip } from '../LocationTab/StatusChip';
 import { BluetoothIndicator } from '../LocationTab/BluetoothIndicator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Friend } from '../../types/friends';
+import { useAuth } from '../../context/AuthContext';
 
 interface ActivityTabProps {
   friends: Friend[];
@@ -25,6 +26,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
   sharedInitialRegion,
 }) => {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
 
   // Convert friends to markers (same as other tabs)
   const friendMarkers = friends.map(friend => ({
@@ -50,6 +52,8 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
         initialRegion={initialRegion}
         showsUserLocation={sharedLocationPermissionGranted}
         userLocation={sharedUserLocation}
+        userProfilePicture={user?.profilePicture}
+        userName={user?.name}
         markers={friendMarkers}
       />
 

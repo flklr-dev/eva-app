@@ -28,6 +28,8 @@ interface MapViewProps {
     latitude: number;
     longitude: number;
   } | null;
+  userProfilePicture?: string;
+  userName?: string;
   style?: any;
   mapPadding?: {
     top?: number;
@@ -37,14 +39,19 @@ interface MapViewProps {
   };
 }
 
-export const MapView = React.memo(React.forwardRef<any, MapViewProps>(({
-  initialRegion,
-  markers = [],
-  showsUserLocation = true,
-  userLocation = null,
-  style,
-  mapPadding,
-}, ref) => {
+export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
+  {
+    initialRegion,
+    markers = [],
+    showsUserLocation = true,
+    userLocation = null,
+    userProfilePicture,
+    userName = 'You',
+    style,
+    mapPadding,
+  },
+  ref
+) => {
   const webViewRef = useRef<WebView>(null);
   
   // Expose WebView ref to parent
@@ -76,13 +83,36 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>(({
 
     const userLocationScript = userLocation && showsUserLocation ? `
       const userPos = [${userLocation.latitude}, ${userLocation.longitude}];
-      const userMarker = L.circleMarker(userPos, {
-        radius: 10,
-        fillColor: '#4285F4',
-        color: '#ffffff',
-        weight: 3,
-        fillOpacity: 1
-      }).addTo(map).bindPopup('Your Location');
+      
+      // Create user marker with profile picture or initials
+      const userName = '${userName.replace(/'/g, "\\'")}';
+      const userProfilePicUrl = '${userProfilePicture || ''}';
+      const userInitials = userName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+      
+      // Create custom icon for user marker with blue border
+      let userIconHtml = '';
+      if (userProfilePicUrl) {
+        userIconHtml = '<div class="profile-marker" style="border-color: #4285F4;">' +
+          '<img src="' + userProfilePicUrl + '" alt="' + userName + '" onerror="this.style.display=' + "'none'; this.nextElementSibling.style.display='flex';" + '" />' +
+          '<div class="profile-fallback" style="display:none; background: #4285F4;">' + userInitials + '</div>' +
+          '</div>';
+      } else {
+        userIconHtml = '<div class="profile-marker" style="border-color: #4285F4;">' +
+          '<div class="profile-fallback" style="display:flex; background: #4285F4;">' + userInitials + '</div>' +
+          '</div>';
+      }
+      
+      const userIcon = L.divIcon({
+        html: userIconHtml,
+        className: 'custom-marker',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -20]
+      });
+      
+      const userMarker = L.marker(userPos, { icon: userIcon })
+        .addTo(map)
+        .bindPopup('Your Location');
       
       // Focus on user location (default view for LocationTab)
       map.setView(userPos, ${zoom});
@@ -218,21 +248,47 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>(({
       // Instead of reloading, update the user marker position dynamically
       const updateScript = `
         (function() {
-          // Remove existing user marker if any
+          // Remove existing user marker if any (check for both old CircleMarker and new divIcon marker)
           map.eachLayer(function(layer) {
-            if (layer instanceof L.CircleMarker && layer.options.fillColor === '#4285F4') {
+            if ((layer instanceof L.CircleMarker && layer.options.fillColor === '#4285F4') ||
+                (layer instanceof L.Marker && layer.options.icon && 
+                 layer.options.icon.options.html && 
+                 layer.options.icon.options.html.includes('border-color: #4285F4'))) {
               map.removeLayer(layer);
             }
           });
-          // Add new user marker at updated location
+          
+          // Add new user marker at updated location with profile picture
           const userPos = [${userLocation.latitude}, ${userLocation.longitude}];
-          L.circleMarker(userPos, {
-            radius: 10,
-            fillColor: '#4285F4',
-            color: '#ffffff',
-            weight: 3,
-            fillOpacity: 1
-          }).addTo(map).bindPopup('Your Location');
+          const userName = '${userName.replace(/'/g, "\\'")}';
+          const userProfilePicUrl = '${userProfilePicture || ''}';
+          const userInitials = userName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+          
+          // Create custom icon for user marker with blue border
+          let userIconHtml = '';
+          if (userProfilePicUrl) {
+            userIconHtml = '<div class="profile-marker" style="border-color: #4285F4;">' +
+              '<img src="' + userProfilePicUrl + '" alt="' + userName + '" onerror="this.style.display=' + "'none'; this.nextElementSibling.style.display='flex';" + '" />' +
+              '<div class="profile-fallback" style="display:none; background: #4285F4;">' + userInitials + '</div>' +
+              '</div>';
+          } else {
+            userIconHtml = '<div class="profile-marker" style="border-color: #4285F4;">' +
+              '<div class="profile-fallback" style="display:flex; background: #4285F4;">' + userInitials + '</div>' +
+              '</div>';
+          }
+          
+          const userIcon = L.divIcon({
+            html: userIconHtml,
+            className: 'custom-marker',
+            iconSize: [40, 40],
+            iconAnchor: [20, 20],
+            popupAnchor: [0, -20]
+          });
+          
+          L.marker(userPos, { icon: userIcon })
+            .addTo(map)
+            .bindPopup('Your Location');
+          
           // Pan to new location smoothly (no zoom change)
           map.panTo(userPos, { animate: true, duration: 0.5 });
         })();
@@ -240,7 +296,7 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>(({
       `;
       webViewRef.current.injectJavaScript(updateScript);
     }
-  }, [userLocation, showsUserLocation]);
+  }, [userLocation, showsUserLocation, userProfilePicture, userName]);
 
   return (
     <View style={[styles.container, style]}>

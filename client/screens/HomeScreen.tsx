@@ -354,6 +354,8 @@ const LocationTab: React.FC<{
             initialRegion={initialRegion}
             showsUserLocation={locationPermissionGranted}
             userLocation={userLocation}
+            userProfilePicture={user?.profilePicture}
+            userName={user?.name}
             markers={(friends || []).map((friend: FriendWithDistance) => ({
               id: friend.id,
               coordinate: friend.coordinate,

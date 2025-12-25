@@ -6,6 +6,7 @@ import { BluetoothIndicator } from '../LocationTab/BluetoothIndicator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Friend } from '../../types/friends';
 import { calculateDistance } from '../../utils/distanceCalculator';
+import { useAuth } from '../../context/AuthContext';
 
 interface FriendsTabProps {
   friends: Friend[];
@@ -33,19 +34,23 @@ export interface FriendsTabRef {
 /**
  * Friends Tab - Displays map with friend locations
  */
-export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
-  friends,
-  isBluetoothConnected,
-  initialRegion: propInitialRegion,
-  onFriendsWithDistanceChange,
-  onFriendPress,
-  sharedUserLocation,
-  sharedLocationPermissionGranted = false,
-  onUserLocationChange,
-  onLocationPermissionChange,
-  sharedInitialRegion,
-}, ref) => {
+export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
+  {
+    friends,
+    isBluetoothConnected,
+    initialRegion: propInitialRegion,
+    onFriendsWithDistanceChange,
+    onFriendPress,
+    sharedUserLocation,
+    sharedLocationPermissionGranted = false,
+    onUserLocationChange,
+    onLocationPermissionChange,
+    sharedInitialRegion,
+  },
+  ref
+) => {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   
   // IMPORTANT: Location permission is already handled at HomeScreen level
   // We receive sharedUserLocation and sharedLocationPermissionGranted as props
@@ -221,7 +226,7 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
       
       // Calculate offset - SUBTRACT to shift map DOWN so marker appears UP
       // This positions the marker in the upper visible area above status indicator
-      const latOffsetRatio = 0.0025; // Adjusted offset for zoom level 17 (more zoomed in)
+      const latOffsetRatio = 0.003; // Adjusted offset for zoom level 17 (more zoomed in)
       const shiftedLat = friend.coordinate.latitude - latOffsetRatio; // SUBTRACT not add!
       
       const script = `
@@ -301,6 +306,8 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
           initialRegion={initialRegion}
           showsUserLocation={locationPermissionGranted}
           userLocation={userLocation}
+          userProfilePicture={user?.profilePicture}
+          userName={user?.name}
           markers={friendMarkers}
           mapPadding={{ top: 0, right: 0, bottom: 400, left: 0 }}
         />
