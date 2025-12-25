@@ -32,6 +32,7 @@ export const DeviceTab: React.FC<DeviceTabProps> = ({
     coordinate: friend.coordinate,
     name: friend.name,
     status: friend.status,
+    profilePicture: friend.profilePicture,
   }));
 
   // Use shared initial region or fallback

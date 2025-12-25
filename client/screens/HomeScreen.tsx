@@ -359,6 +359,7 @@ const LocationTab: React.FC<{
               coordinate: friend.coordinate,
               name: friend.name,
               status: friend.status,
+              profilePicture: friend.profilePicture,
             }))}
           />
         )}

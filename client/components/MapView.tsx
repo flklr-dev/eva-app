@@ -12,6 +12,7 @@ export interface Marker {
   coordinate: LatLng;
   name: string;
   status?: string;
+  profilePicture?: string;
 }
 
 interface MapViewProps {
@@ -62,6 +63,7 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>(({
         lng: marker.coordinate.longitude,
         name: marker.name,
         status: marker.status || '',
+        profilePicture: marker.profilePicture || '',
       }))
     );
 
@@ -114,6 +116,43 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>(({
               -webkit-transition: none;
               transition: none;
             }
+            /* Profile marker styles */
+            .custom-marker {
+              background: transparent;
+              border: none;
+            }
+            .profile-marker {
+              width: 40px;
+              height: 40px;
+              border-radius: 50%;
+              overflow: hidden;
+              border: 3px solid #ffffff;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+              background: #34D399;
+              position: relative;
+            }
+            .profile-marker img {
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            }
+            .profile-fallback {
+              width: 100%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 14px;
+              font-weight: 600;
+              color: #ffffff;
+              background: #34D399;
+            }
+            .profile-marker.highlighted {
+              border: 4px solid #10B981;
+              box-shadow: 0 4px 16px rgba(16, 185, 129, 0.5);
+              width: 48px;
+              height: 48px;
+            }
           </style>
         </head>
         <body>
@@ -137,13 +176,34 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>(({
             ${userLocationScript}
 
             markers.forEach(marker => {
-              L.circleMarker([marker.lat, marker.lng], {
-                radius: 10,
-                fillColor: '#34D399',
-                color: '#ffffff',
-                weight: 2,
-                fillOpacity: 1
-              }).addTo(map).bindPopup('<b>' + marker.name + '</b><br>' + (marker.status || ''));
+              // Create profile picture marker with divIcon
+              const initials = marker.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+              const profilePicUrl = marker.profilePicture;
+              
+              // Create custom icon with profile picture or initials
+              let iconHtml = '';
+              if (profilePicUrl) {
+                iconHtml = '<div class="profile-marker">' +
+                  '<img src="' + profilePicUrl + '" alt="' + marker.name + '" onerror="this.style.display=' + "'none'; this.nextElementSibling.style.display='flex';" + '" />' +
+                  '<div class="profile-fallback" style="display:none;">' + initials + '</div>' +
+                  '</div>';
+              } else {
+                iconHtml = '<div class="profile-marker">' +
+                  '<div class="profile-fallback" style="display:flex;">' + initials + '</div>' +
+                  '</div>';
+              }
+              
+              const icon = L.divIcon({
+                html: iconHtml,
+                className: 'custom-marker',
+                iconSize: [40, 40],
+                iconAnchor: [20, 20],
+                popupAnchor: [0, -20]
+              });
+              
+              L.marker([marker.lat, marker.lng], { icon: icon })
+                .addTo(map)
+                .bindPopup('<b>' + marker.name + '</b>');
             });
           </script>
         </body>

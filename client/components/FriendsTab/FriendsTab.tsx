@@ -27,6 +27,7 @@ interface FriendsTabProps {
 
 export interface FriendsTabRef {
   navigateToFriend: (friend: Friend & { distance: number }) => void;
+  resetMapView: () => void;
 }
 
 /**
@@ -101,10 +102,19 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
   // Always use shared initial region (same as Home screen) with slight upward shift for friends list
   // This ensures consistent zoom level (0.01, 0.01) across all tabs
   const initialRegion = useMemo(() => {
+    // Get screen height for responsive offset calculation
+    const { height: screenHeight } = require('react-native').Dimensions.get('window');
+    
+    // Calculate responsive vertical offset based on screen size
+    // For smaller screens (< 700px): use smaller offset (0.012)
+    // For medium screens (700-900px): use medium offset (0.015)
+    // For larger screens (> 900px): use larger offset (0.018)
+    const verticalOffset = screenHeight < 700 ? 0.012 : screenHeight < 900 ? 0.015 : 0.018;
+    
     // Always use shared initial region if provided (same zoom as Home screen)
     if (sharedInitialRegion) {
       return {
-        latitude: sharedInitialRegion.latitude + 0.015, // Shift north slightly to avoid friends list
+        latitude: sharedInitialRegion.latitude + verticalOffset, // Shift north slightly to avoid friends list
         longitude: sharedInitialRegion.longitude,
         latitudeDelta: sharedInitialRegion.latitudeDelta, // Same zoom as Home screen
         longitudeDelta: sharedInitialRegion.longitudeDelta, // Same zoom as Home screen
@@ -114,7 +124,7 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
     // Fallback: use same zoom level as Home screen
     if (userLocation) {
       return {
-        latitude: userLocation.latitude + 0.015, // Shift north slightly to avoid friends list
+        latitude: userLocation.latitude + verticalOffset, // Shift north slightly to avoid friends list
         longitude: userLocation.longitude,
         latitudeDelta: 0.01, // Same zoom level as Home screen
         longitudeDelta: 0.01, // Same zoom level as Home screen
@@ -138,38 +148,137 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
       coordinate: friend.coordinate,
       name: friend.name,
       status: friend.status,
+      profilePicture: friend.profilePicture,
     }));
   }, [friends, friendsWithDistance]);
   
   // Map ref for navigation
   const mapRef = useRef<any>(null);
   
-  // Handle friend press - navigate map to friend location (pan only, no zoom)
-  const handleFriendPressInternal = useCallback((friend: Friend & { distance: number }) => {
-    // Navigate map to friend location directly (avoid infinite loop)
-    // Only pan/move to friend location, don't zoom in/out
-    if (mapRef.current && friend.coordinate) {
-      // Shift latitude north very significantly so marker appears in upper portion of visible map
-      // Friends list panel covers bottom ~60% of screen, so shift by much larger amount
-      const shiftedLat = friend.coordinate.latitude + 0.045;
+  // Track last selected friend to prevent zoom accumulation
+  const lastSelectedFriendRef = useRef<string | null>(null);
+  
+  // Reset map view to show all friends
+  const resetMapView = useCallback(() => {
+    if (mapRef.current) {
+      // Clear last selected friend when resetting
+      lastSelectedFriendRef.current = null;
+      
       const script = `
         (function() {
-          // Pan to friend location (shifted upward significantly) without changing zoom
-          map.panTo([${shiftedLat}, ${friend.coordinate.longitude}], {
-            animate: true,
-            duration: 0.5
-          });
-          setTimeout(function() {
-            map.eachLayer(function(layer) {
-              if (layer instanceof L.CircleMarker) {
-                var latlng = layer.getLatLng();
-                if (Math.abs(latlng.lat - ${friend.coordinate.latitude}) < 0.0001 && 
-                    Math.abs(latlng.lng - ${friend.coordinate.longitude}) < 0.0001) {
-                  layer.openPopup();
+          // Restore all friend markers to normal visibility and style
+          map.eachLayer(function(layer) {
+            if (layer instanceof L.Marker && layer.options.icon && layer.options.icon.options.className === 'custom-marker') {
+              // Restore marker visibility
+              layer.setOpacity(1);
+              
+              // Remove highlight styling
+              var markerElement = layer.getElement();
+              if (markerElement) {
+                var profileMarker = markerElement.querySelector('.profile-marker');
+                if (profileMarker) {
+                  profileMarker.classList.remove('highlighted');
+                  profileMarker.style.width = '40px';
+                  profileMarker.style.height = '40px';
                 }
               }
+            }
+          });
+          
+          // Pan back to user location if available and restore zoom
+          ${userLocation ? `
+          var defaultZoom = 15; // Default zoom level (matches 0.01 latitudeDelta): Math.round(Math.log(360/0.01)/Math.LN2) = 15
+          
+          // Smoothly fly back to user location with original zoom
+          map.flyTo([${userLocation.latitude + 0.015}, ${userLocation.longitude}], defaultZoom, {
+            animate: true,
+            duration: 0.8,
+            easeLinearity: 0.25
+          });
+          ` : ''}
+        })();
+        true;
+      `;
+      mapRef.current.injectJavaScript(script);
+    }
+  }, [userLocation]);
+  
+  // Handle friend press - navigate map to friend location with subtle zoom
+  const handleFriendPressInternal = useCallback((friend: Friend & { distance: number }) => {
+    // Navigate map to friend location with zoom animation
+    // Calculate vertical offset based on screen height to account for bottom sheet
+    if (mapRef.current && friend.coordinate) {
+      // Check if clicking the same friend again
+      const isSameFriend = lastSelectedFriendRef.current === friend.id;
+      
+      // Update last selected friend
+      lastSelectedFriendRef.current = friend.id;
+      
+      // Bottom sheet takes approximately 60% of screen on mobile devices
+      // To ensure marker is visible in the upper visible portion, we need to SUBTRACT from latitude
+      // (not add) so the map center shifts DOWN, putting the marker UP in the visible area
+      const screenHeight = require('react-native').Dimensions.get('window').height;
+      
+      // Calculate offset - SUBTRACT to shift map DOWN so marker appears UP
+      // This positions the marker in the upper visible area above status indicator
+      const latOffsetRatio = 0.0025; // Adjusted offset for zoom level 17 (more zoomed in)
+      const shiftedLat = friend.coordinate.latitude - latOffsetRatio; // SUBTRACT not add!
+      
+      const script = `
+        (function() {
+          // First, hide all friend markers except the selected one
+          map.eachLayer(function(layer) {
+            if (layer instanceof L.Marker && layer.options.icon && layer.options.icon.options.className === 'custom-marker') {
+              var latlng = layer.getLatLng();
+              if (Math.abs(latlng.lat - ${friend.coordinate.latitude}) < 0.0001 && 
+                  Math.abs(latlng.lng - ${friend.coordinate.longitude}) < 0.0001) {
+                // This is the selected friend - highlight it
+                var markerElement = layer.getElement();
+                if (markerElement) {
+                  var profileMarker = markerElement.querySelector('.profile-marker');
+                  if (profileMarker) {
+                    profileMarker.classList.add('highlighted');
+                    profileMarker.style.width = '48px';
+                    profileMarker.style.height = '48px';
+                  }
+                }
+                layer.setOpacity(1);
+              } else {
+                // Hide other friend markers
+                layer.setOpacity(0);
+              }
+            }
+          });
+          
+          // Fixed target zoom levels for consistent behavior
+          // Initial zoom is 15 (from Math.round(Math.log(360/0.01)/Math.LN2) = 15 for 0.01 latitudeDelta)
+          var defaultZoom = 15; // Default zoom level (matches 0.01 latitudeDelta)
+          var friendZoom = 17; // Subtle zoom when focusing on friend (zoom in by 2 levels)
+          
+          // Determine target zoom based on whether this is the same friend or different
+          var targetZoom = friendZoom;
+          var isSameFriend = ${isSameFriend};
+          
+          // If clicking same friend and already at friend zoom, stay at that zoom
+          // If clicking different friend or not at friend zoom, zoom to friend level
+          var currentZoom = map.getZoom();
+          
+          // If same friend and already close to target zoom, just pan without zooming
+          if (isSameFriend && Math.abs(currentZoom - friendZoom) < 0.5) {
+            // Just pan to ensure proper positioning
+            map.flyTo([${shiftedLat}, ${friend.coordinate.longitude}], friendZoom, {
+              animate: true,
+              duration: 0.6,
+              easeLinearity: 0.25
             });
-          }, 150);
+          } else {
+            // Zoom and pan to friend location (different friend or different zoom level)
+            map.flyTo([${shiftedLat}, ${friend.coordinate.longitude}], friendZoom, {
+              animate: true,
+              duration: 0.8,
+              easeLinearity: 0.25
+            });
+          }
         })();
         true;
       `;
@@ -179,7 +288,8 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>(({
   
   // Expose navigation function to parent via ref
   React.useImperativeHandle(ref, () => ({
-    navigateToFriend: handleFriendPressInternal
+    navigateToFriend: handleFriendPressInternal,
+    resetMapView: resetMapView
   }));
 
   return (
