@@ -169,6 +169,13 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
       // Clear last selected friend when resetting
       lastSelectedFriendRef.current = null;
       
+      // Calculate the same offset as used in initialRegion to maintain consistency with app's default position
+      // This matches the offset used when the app first loads (for friends list spacing)
+      const screenHeight = require('react-native').Dimensions.get('window').height;
+      
+      // Calculate the same vertical offset as used in initialRegion
+      const verticalOffset = screenHeight < 700 ? 0.012 : screenHeight < 900 ? 0.015 : 0.018;
+      
       const script = `
         (function() {
           // Restore all friend markers to normal visibility and style
@@ -192,14 +199,27 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
           
           // Pan back to user location if available and restore zoom
           ${userLocation ? `
-          var defaultZoom = 15; // Default zoom level (matches 0.01 latitudeDelta): Math.round(Math.log(360/0.01)/Math.LN2) = 15
-          
-          // Smoothly fly back to user location with original zoom
-          map.flyTo([${userLocation.latitude + 0.015}, ${userLocation.longitude}], defaultZoom, {
-            animate: true,
-            duration: 0.8,
-            easeLinearity: 0.25
-          });
+          // Ensure map is properly initialized before setting view
+          if (map && map._container) {
+            var defaultZoom = 15; // Default zoom level (matches 0.01 latitudeDelta): Math.round(Math.log(360/0.01)/Math.LN2) = 15
+            // Use a smaller offset than initialRegion to position marker higher but still visible
+            // This balances between default app position and visibility above bottom navbar
+            var verticalOffset = ${verticalOffset};
+            // Reduce the offset by approximately 70% to position significantly higher on screen
+            var adjustedOffset = verticalOffset * 0.005;
+            var targetLat = ${userLocation.latitude} + adjustedOffset;
+            var targetLng = ${userLocation.longitude};
+            
+            // Use setView to immediately position map, ensuring user marker is centered and visible
+            map.setView([targetLat, targetLng], defaultZoom);
+            
+            // Then animate smoothly with flyTo for visual feedback
+            map.flyTo([targetLat, targetLng], defaultZoom, {
+              animate: true,
+              duration: 0.5,
+              easeLinearity: 0.25
+            });
+          }
           ` : ''}
         })();
         true;
@@ -226,7 +246,7 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
       
       // Calculate offset - SUBTRACT to shift map DOWN so marker appears UP
       // This positions the marker in the upper visible area above status indicator
-      const latOffsetRatio = 0.003; // Adjusted offset for zoom level 17 (more zoomed in)
+      const latOffsetRatio = 0.0025; // Adjusted offset for zoom level 17 (more zoomed in)
       const shiftedLat = friend.coordinate.latitude - latOffsetRatio; // SUBTRACT not add!
       
       const script = `
@@ -309,7 +329,7 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
           userProfilePicture={user?.profilePicture}
           userName={user?.name}
           markers={friendMarkers}
-          mapPadding={{ top: 0, right: 0, bottom: 400, left: 0 }}
+          mapPadding={{ top: 0, right: 0, bottom: 60, left: 0 }}
         />
 
         {locationPermissionGranted && (
