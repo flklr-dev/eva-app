@@ -24,7 +24,7 @@ import { useHomeNotification } from '../hooks/useHomeNotification';
 import { useQuickActionMode } from '../hooks/useQuickActionMode';
 import type { QuickActionKey, HomeStatus } from '../types/quickActions';
 import { QuickActionButton } from '../components/QuickActions';
-import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, FriendRequestsPanel, FriendDetailsPanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
+import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, FriendRequestsPanel, FriendDetailsPanel, RoutePanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
 import {
   StatusChip,
   BluetoothIndicator,
@@ -443,6 +443,10 @@ export const HomeScreen: React.FC = () => {
   // Selected friend state for showing FriendDetailsPanel
   const [selectedFriend, setSelectedFriend] = useState<FriendWithDistance | null>(null);
   
+  // Route state for showing RoutePanel
+  const [showRoutePanel, setShowRoutePanel] = useState(false);
+  const [routeFriend, setRouteFriend] = useState<FriendWithDistance | null>(null);
+  
   const handleFriendPress = (friend: FriendWithDistance) => {
     // Navigate map to friend location
     if (friendsTabRef.current) {
@@ -471,9 +475,48 @@ export const HomeScreen: React.FC = () => {
   };
   
   const handleRoute = (friend: FriendWithDistance) => {
-    // TODO: Implement route/directions functionality
     console.log('Route pressed for:', friend.name);
-    Alert.alert('Route', `Directions to ${friend.name}'s location will be available soon.`);
+    // Close friend details panel and show route panel
+    setSelectedFriend(null);
+    setRouteFriend(friend);
+    setShowRoutePanel(true);
+    
+    // Show initial route with default mode (car) after panel animation starts
+    setTimeout(() => {
+      if (friendsTabRef.current && sharedUserLocation) {
+        friendsTabRef.current.showRoute(
+          sharedUserLocation,
+          friend.coordinate,
+          'car'
+        );
+      }
+    }, 100);
+  };
+  
+  const handleTransportModeChange = (mode: string, routeData: any) => {
+    // Update route on map when transport mode changes
+    if (friendsTabRef.current && sharedUserLocation && routeFriend) {
+      friendsTabRef.current.showRoute(
+        sharedUserLocation,
+        routeFriend.coordinate,
+        mode
+      );
+    }
+  };
+  
+  const handleCloseRoutePanel = () => {
+    setShowRoutePanel(false);
+    setRouteFriend(null);
+    // Clear route from map and reset map view
+    if (friendsTabRef.current) {
+      friendsTabRef.current.clearRoute();
+    }
+    // Reset map view to default after a small delay
+    setTimeout(() => {
+      if (friendsTabRef.current) {
+        friendsTabRef.current.resetMapView();
+      }
+    }, 50);
   };
   
   const handleRemoveFriend = async (friend: FriendWithDistance) => {
@@ -1130,7 +1173,7 @@ export const HomeScreen: React.FC = () => {
   const bottomSheetInner = (
     <>
              {/* Bottom Sheet Handle - Hidden in Profile tab and when Friend Details Panel is shown */}
-             {activeTab !== 'PROFILE' && !(activeTab === 'FRIENDS' && selectedFriend) && <View style={styles.bottomSheetHandle} />}
+             {activeTab !== 'PROFILE' && !(activeTab === 'FRIENDS' && (selectedFriend || showRoutePanel)) && <View style={styles.bottomSheetHandle} />}
              
              {/* Quick Actions - Hidden when Friends, Activity, Device, or Profile tab is active */}
              {activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && (
@@ -1168,8 +1211,8 @@ export const HomeScreen: React.FC = () => {
         </View>
              )}
 
-             {/* Friends List Panel - Shown when Friends tab is active and no friend selected */}
-             {activeTab === 'FRIENDS' && !showFriendRequests && !selectedFriend && (
+             {/* Friends List Panel - Shown when Friends tab is active and no friend selected and no route panel */}
+             {activeTab === 'FRIENDS' && !showFriendRequests && !selectedFriend && !showRoutePanel && (
                <FriendsListPanel
                  friends={friendsWithDistance}
                  onAddFriend={handleAddFriend}
@@ -1184,13 +1227,23 @@ export const HomeScreen: React.FC = () => {
              )}
 
              {/* Friend Details Panel - Shown when a friend is selected */}
-             {activeTab === 'FRIENDS' && !showFriendRequests && selectedFriend && (
+             {activeTab === 'FRIENDS' && !showFriendRequests && selectedFriend && !showRoutePanel && (
                <FriendDetailsPanel
                  friend={selectedFriend}
                  onClose={handleCloseFriendDetails}
                  onContactDetails={handleContactDetails}
                  onRoute={handleRoute}
                  onRemoveFriend={handleRemoveFriend}
+               />
+             )}
+
+             {/* Route Panel - Shown when route button is clicked */}
+             {activeTab === 'FRIENDS' && showRoutePanel && routeFriend && sharedUserLocation && (
+               <RoutePanel
+                 friend={routeFriend}
+                 onClose={handleCloseRoutePanel}
+                 onTransportModeChange={handleTransportModeChange}
+                 userLocation={sharedUserLocation}
                />
              )}
 
@@ -1250,8 +1303,8 @@ export const HomeScreen: React.FC = () => {
              {/* Separator Line - Only show when not in Friends, Activity, Device, or Profile tab */}
              {activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && <View style={styles.separator} />}
 
-        {/* Bottom Navigation - Hidden when FriendDetailsPanel is shown */}
-        {!(activeTab === 'FRIENDS' && selectedFriend) && (
+        {/* Bottom Navigation - Hidden when FriendDetailsPanel or RoutePanel is shown */}
+        {!(activeTab === 'FRIENDS' && (selectedFriend || showRoutePanel)) && (
           <BottomNavBar
             tabs={TABS}
             activeKey={activeTab}

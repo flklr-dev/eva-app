@@ -29,6 +29,8 @@ interface FriendsTabProps {
 export interface FriendsTabRef {
   navigateToFriend: (friend: Friend & { distance: number }) => void;
   resetMapView: () => void;
+  showRoute: (startLocation: { latitude: number; longitude: number }, endLocation: { latitude: number; longitude: number }, mode: string) => void;
+  clearRoute: () => void;
 }
 
 /**
@@ -228,6 +230,144 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
     }
   }, [userLocation]);
   
+  // Show route between two locations
+  const showRoute = useCallback(async (startLocation: { latitude: number; longitude: number }, endLocation: { latitude: number; longitude: number }, mode: string) => {
+    if (mapRef.current) {
+      console.log('showRoute called with:', { startLocation, endLocation, mode });
+      
+      // Helper function to draw route on map
+      const drawRouteOnMap = (routeCoords: number[][]) => {
+        const script = `
+          (function() {
+            try {
+              // Remove existing route elements ONLY (preserve user and friend markers)
+              if (window.currentRoute) { map.removeLayer(window.currentRoute); }
+              if (window.currentRouteOutline) { map.removeLayer(window.currentRouteOutline); }
+              if (window.startMarker) { map.removeLayer(window.startMarker); }
+              if (window.endMarker) { map.removeLayer(window.endMarker); }
+              
+              var routeCoords = ${JSON.stringify(routeCoords)};
+              
+              // White outline for contrast
+              window.currentRouteOutline = L.polyline(routeCoords, {
+                color: '#FFFFFF', weight: 10, opacity: 1, lineJoin: 'round', lineCap: 'round'
+              }).addTo(map);
+              
+              // Blue route line
+              window.currentRoute = L.polyline(routeCoords, {
+                color: '#4285F4', weight: 6, opacity: 1, lineJoin: 'round', lineCap: 'round'
+              }).addTo(map);
+              
+              // Start marker - blue circle with white border (smaller to distinguish from profile pics)
+              var markerHtml = '<div style="width: 16px; height: 16px; border-radius: 50%; background-color: #4285F4; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>';
+              var startIcon = L.divIcon({ html: markerHtml, className: 'route-marker', iconSize: [16, 16], iconAnchor: [8, 8] });
+              window.startMarker = L.marker(routeCoords[0], { icon: startIcon }).addTo(map);
+              
+              // End marker
+              var endIcon = L.divIcon({ html: markerHtml, className: 'route-marker', iconSize: [16, 16], iconAnchor: [8, 8] });
+              window.endMarker = L.marker(routeCoords[routeCoords.length - 1], { icon: endIcon }).addTo(map);
+              
+              // Ensure user marker is visible and on top by recreating it
+              // This prevents it from being hidden by route elements
+              map.eachLayer(function(layer) {
+                if (layer instanceof L.Marker && layer.options.icon && 
+                    layer.options.icon.options.html && 
+                    layer.options.icon.options.html.includes('border-color: #4285F4')) {
+                  // Move user marker to front by removing and re-adding
+                  var latlng = layer.getLatLng();
+                  var icon = layer.options.icon;
+                  var popup = layer.getPopup();
+                  map.removeLayer(layer);
+                  var newMarker = L.marker(latlng, { icon: icon }).addTo(map);
+                  if (popup) newMarker.bindPopup(popup);
+                }
+              });
+              
+              // Fit bounds
+              var bounds = window.currentRoute.getBounds();
+              map.fitBounds(bounds, { padding: [80, 50], maxZoom: 15, animate: true, duration: 0.5 });
+              console.log('Route drawn successfully with ' + routeCoords.length + ' points');
+            } catch(e) {
+              console.error('Error drawing route:', e);
+            }
+          })();
+          true;
+        `;
+        mapRef.current?.injectJavaScript(script);
+      };
+      
+      // Fetch actual route from OSRM (don't draw straight line as fallback initially)
+      try {
+        const profile = mode === 'walk' ? 'foot' : 'driving';
+        const url = `https://router.project-osrm.org/route/v1/${profile}/${startLocation.longitude},${startLocation.latitude};${endLocation.longitude},${endLocation.latitude}?overview=full&geometries=geojson`;
+        
+        console.log('Fetching actual route from OSRM with profile:', profile);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        const data = await response.json();
+        console.log('OSRM response code:', data.code, 'routes count:', data.routes?.length);
+        
+        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const coordinates = route.geometry.coordinates;
+          const routeCoordinates = coordinates.map((coord: number[]) => [coord[1], coord[0]]);
+          console.log('Drawing road-based route with', routeCoordinates.length, 'points');
+          drawRouteOnMap(routeCoordinates);
+        } else {
+          console.log('OSRM returned invalid response, drawing straight line fallback');
+          const straightLineCoords = [
+            [startLocation.latitude, startLocation.longitude],
+            [endLocation.latitude, endLocation.longitude]
+          ];
+          drawRouteOnMap(straightLineCoords);
+        }
+      } catch (error) {
+        console.log('OSRM API failed or timed out:', error);
+        // Fallback to straight line if OSRM fails
+        const straightLineCoords = [
+          [startLocation.latitude, startLocation.longitude],
+          [endLocation.latitude, endLocation.longitude]
+        ];
+        drawRouteOnMap(straightLineCoords);
+      }
+    } else {
+      console.log('mapRef.current is null');
+    }
+  }, []);
+  
+  // Clear route from map
+  const clearRoute = useCallback(() => {
+    if (mapRef.current) {
+      const script = `
+        (function() {
+          if (window.currentRoute) {
+            map.removeLayer(window.currentRoute);
+            window.currentRoute = null;
+          }
+          if (window.currentRouteOutline) {
+            map.removeLayer(window.currentRouteOutline);
+            window.currentRouteOutline = null;
+          }
+          if (window.startMarker) {
+            map.removeLayer(window.startMarker);
+            window.startMarker = null;
+          }
+          if (window.endMarker) {
+            map.removeLayer(window.endMarker);
+            window.endMarker = null;
+          }
+        })();
+        true;
+      `;
+      mapRef.current.injectJavaScript(script);
+    }
+  }, []);
+  
   // Handle friend press - navigate map to friend location with subtle zoom
   const handleFriendPressInternal = useCallback((friend: Friend & { distance: number }) => {
     // Navigate map to friend location with zoom animation
@@ -314,7 +454,9 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
   // Expose navigation function to parent via ref
   React.useImperativeHandle(ref, () => ({
     navigateToFriend: handleFriendPressInternal,
-    resetMapView: resetMapView
+    resetMapView: resetMapView,
+    showRoute: showRoute,
+    clearRoute: clearRoute
   }));
 
   return (

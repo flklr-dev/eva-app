@@ -31,33 +31,20 @@ export const FriendDetailsPanel: React.FC<FriendDetailsPanelProps> = ({
   onRoute,
   onRemoveFriend,
 }) => {
-  // Panel height state for resize functionality
-  const [panelHeight, setPanelHeight] = useState(DEFAULT_PANEL_HEIGHT);
-  const panelHeightRef = useRef(DEFAULT_PANEL_HEIGHT);
+  // Default panel height (resize functionality removed)
+  const panelHeight = DEFAULT_PANEL_HEIGHT;
   
   // Animation for slide-in effect from bottom
   const slideAnim = useRef(new Animated.Value(DEFAULT_PANEL_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Pan responder for handle bar drag resize
+  // Pan responder for handle bar - resize functionality removed but handle remains visible
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, gestureState) => {
-        // Calculate new height based on drag direction
-        // Moving up (negative dy) increases height, moving down decreases
-        const newHeight = panelHeightRef.current - gestureState.dy;
-        const clampedHeight = Math.max(MIN_PANEL_HEIGHT, Math.min(MAX_PANEL_HEIGHT, newHeight));
-        setPanelHeight(clampedHeight);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // Update the ref with final height
-        const newHeight = panelHeightRef.current - gestureState.dy;
-        const clampedHeight = Math.max(MIN_PANEL_HEIGHT, Math.min(MAX_PANEL_HEIGHT, newHeight));
-        panelHeightRef.current = clampedHeight;
-        setPanelHeight(clampedHeight);
-      },
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: () => false,
+      onPanResponderMove: () => {},
+      onPanResponderRelease: () => {},
     })
   ).current;
 
@@ -145,7 +132,7 @@ export const FriendDetailsPanel: React.FC<FriendDetailsPanelProps> = ({
         {
           opacity: fadeAnim,
           transform: [{ translateY: slideAnim }],
-          minHeight: panelHeight,
+          height: panelHeight,
         },
       ]}
     >
