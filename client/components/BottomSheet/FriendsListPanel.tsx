@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, Platform, ActivityIndicator, PanResponder } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FriendListItem } from '../FriendsTab/FriendListItem';
 import { FriendWithDistance } from '../../types/friends';
@@ -35,6 +35,63 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
   const [modalVisible, setModalVisible] = useState(false);
   const [buttonPosition, setButtonPosition] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const buttonRef = useRef<React.ElementRef<typeof TouchableOpacity> | null>(null);
+  
+  // Height calculation constants for resizable panel
+  const FRIEND_ITEM_HEIGHT = 80; // Approximate visual height per friend (includes separators and spacing)
+  const HEADER_HEIGHT = 60; // Header with title and add button
+  const BOTTOM_SEPARATOR_HEIGHT = 1;
+  const DEFAULT_VISIBLE_FRIENDS = 2; // Show exactly 2 friends by default
+  const MAX_HEIGHT = Dimensions.get('window').height * 0.85; // 85% of screen height
+  
+  const calculatePanelHeight = () => {
+    const numFriends = friends.length;
+    if (numFriends === 0) return HEADER_HEIGHT + 120; // Empty state height
+    
+    // Calculate content height based on actual friends
+    const contentHeight = HEADER_HEIGHT + (numFriends * FRIEND_ITEM_HEIGHT) + BOTTOM_SEPARATOR_HEIGHT;
+    
+    // For 1-2 friends, show all of them
+    if (numFriends <= 2) return contentHeight;
+    
+    // For 3+ friends, default to showing 2 friends
+    return HEADER_HEIGHT + (DEFAULT_VISIBLE_FRIENDS * FRIEND_ITEM_HEIGHT) + BOTTOM_SEPARATOR_HEIGHT;
+  };
+  
+  const [panelHeight, setPanelHeight] = useState(calculatePanelHeight());
+  
+  // PanResponder for handle bar drag
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, gestureState) => {
+        // Drag down (negative dy) increases height, drag up (positive dy) decreases height
+        const newHeight = panelHeight - gestureState.dy;
+        const numFriends = friends.length;
+        
+        // Calculate constraints
+        const contentHeight = HEADER_HEIGHT + (numFriends * FRIEND_ITEM_HEIGHT) + BOTTOM_SEPARATOR_HEIGHT;
+        const maxAllowedHeight = Math.min(MAX_HEIGHT, contentHeight);
+        const minHeight = HEADER_HEIGHT + (Math.min(2, numFriends) * FRIEND_ITEM_HEIGHT) + BOTTOM_SEPARATOR_HEIGHT;
+        
+        // Clamp height between min and max
+        const clampedHeight = Math.max(minHeight, Math.min(maxAllowedHeight, newHeight));
+        setPanelHeight(clampedHeight);
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const finalHeight = panelHeight - gestureState.dy;
+        const numFriends = friends.length;
+        
+        // Calculate constraints
+        const contentHeight = HEADER_HEIGHT + (numFriends * FRIEND_ITEM_HEIGHT) + BOTTOM_SEPARATOR_HEIGHT;
+        const maxAllowedHeight = Math.min(MAX_HEIGHT, contentHeight);
+        const minHeight = HEADER_HEIGHT + (Math.min(2, numFriends) * FRIEND_ITEM_HEIGHT) + BOTTOM_SEPARATOR_HEIGHT;
+        
+        const clampedHeight = Math.max(minHeight, Math.min(maxAllowedHeight, finalHeight));
+        setPanelHeight(clampedHeight);
+      },
+    })
+  ).current;
 
   const handleAddButtonPress = () => {
     // Measure button position before showing modal
@@ -53,7 +110,10 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { height: panelHeight }]}>
+      {/* Draggable Handle Area - Invisible touch area at top */}
+      <View {...panResponder.panHandlers} style={styles.handleArea} />
+      
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.titleContainer}>
@@ -83,9 +143,11 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
 
       {/* Friends List */}
       <ScrollView
-        style={styles.listContainer}
+        style={[styles.listContainer, { maxHeight: panelHeight - HEADER_HEIGHT - BOTTOM_SEPARATOR_HEIGHT }]}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
+        scrollEnabled={true}
+        nestedScrollEnabled={true}
       >
         {isLoading ? (
           <View style={styles.loadingContainer}>
@@ -134,7 +196,7 @@ export const FriendsListPanel: React.FC<FriendsListPanelProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginTop: 4,
-    marginBottom: 12,
+    marginBottom: 0,
     paddingHorizontal: SPACING.MD,
   },
   header: {
@@ -195,7 +257,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   listContainer: {
-    maxHeight: Math.min(320, Dimensions.get('window').height * 0.55),
+    // maxHeight will be set dynamically based on panel height
+    marginBottom: 0,
   },
   listContent: {
     paddingBottom: SPACING.SM,
@@ -236,6 +299,14 @@ const styles = StyleSheet.create({
     marginTop: SPACING.MD,
     fontSize: 14,
     color: COLORS.TEXT_SECONDARY,
+  },
+  handleArea: {
+    position: 'absolute',
+    top: -20,
+    left: 0,
+    right: 0,
+    height: 40,
+    zIndex: 10,
   },
 });
 

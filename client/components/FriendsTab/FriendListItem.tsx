@@ -94,9 +94,10 @@ const styles = StyleSheet.create({
   friendRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 0,
     minHeight: 64,
+    marginTop: 2,
   },
   profileContainer: {
     marginRight: SPACING.MD,
