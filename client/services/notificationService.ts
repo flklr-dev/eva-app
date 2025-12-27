@@ -41,8 +41,16 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
 
     try {
       const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      console.log('[Notifications] Project ID from config:', projectId);
+      
+      if (!projectId) {
+        console.error('[Notifications] No project ID found in app config!');
+        console.error('[Notifications] expoConfig:', JSON.stringify(Constants.expoConfig, null, 2));
+        return null;
+      }
+      
       token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-      console.log('Expo Push Token:', token);
+      console.log('[Notifications] Expo Push Token obtained:', token);
     } catch (error) {
       console.error('Error getting push token:', error);
     }

@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { showGlobalFriendRequestNotification } from '../context/GlobalNotificationContext';
+import { showGlobalSafeHomeNotification } from '../context/SafeHomeNotificationContext';
 
 let socket: Socket | null = null;
 let reconnectAttempts = 0;
@@ -144,6 +145,12 @@ export const initializeWebSocket = async (): Promise<void> => {
     socket.on('user_status_changed', (data: UserStatusEventData) => {
       console.log('[WebSocket] User status changed:', data);
       handleUserStatusChanged(data);
+    });
+
+    // Safe home events from friends
+    socket.on('friend_safe_home', (data: { userId: string; userName: string; message: string; timestamp: string }) => {
+      console.log('[WebSocket] Friend sent safe home notification:', data);
+      handleFriendSafeHome(data);
     });
 
     isConnecting = false;
@@ -289,6 +296,33 @@ const handleUserStatusChanged = async (data: UserStatusEventData) => {
   }
 };
 
+// Handle friend safe home notification
+// Note: Push notifications are handled server-side via Expo's push service for offline friends
+// This handler only receives events when the app is active (WebSocket connected)
+const handleFriendSafeHome = async (data: { userId: string; userName: string; message: string; timestamp: string }) => {
+  try {
+    console.log('[WebSocket] Processing friend safe home notification from:', data.userName);
+    
+    // Show global in-app notification (app is active since WebSocket is connected)
+    try {
+      if (showGlobalSafeHomeNotification) {
+        showGlobalSafeHomeNotification({
+          id: data.userId + '_safehome_' + Date.now(),
+          senderName: data.userName,
+          senderId: data.userId,
+          requestId: data.userId + '_safehome',
+          timestamp: new Date(data.timestamp),
+        });
+        console.log('[WebSocket] Safe home in-app notification shown');
+      }
+    } catch (notifError) {
+      console.error('[WebSocket] Error showing safe home notification:', notifError);
+    }
+  } catch (error) {
+    console.error('[WebSocket] Error handling friend safe home:', error);
+  }
+};
+
 // Disconnect WebSocket
 export const disconnectWebSocket = (): void => {
   if (socket) {
@@ -308,6 +342,16 @@ export const emitFriendRequestSent = (recipientId: string): void => {
     console.log('[WebSocket] Friend request sent event emitted');
   } else {
     console.log('[WebSocket] Cannot emit event - not connected');
+  }
+};
+
+// Emit safe home event to friends
+export const emitSafeHome = (message: string): void => {
+  if (socket?.connected) {
+    socket.emit('safe_home', { message });
+    console.log('[WebSocket] Safe home event emitted to friends');
+  } else {
+    console.log('[WebSocket] Cannot emit safe home event - not connected');
   }
 };
 

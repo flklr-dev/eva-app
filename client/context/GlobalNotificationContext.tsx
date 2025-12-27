@@ -21,6 +21,7 @@ interface FriendRequestNotification {
   senderId: string;
   requestId: string;
   timestamp: Date;
+  type?: 'friend_request';
 }
 
 interface GlobalNotificationContextType {

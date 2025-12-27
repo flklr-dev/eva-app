@@ -3,42 +3,39 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform, Dimension
 import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../constants/theme';
-import { useGlobalNotifications } from '../context/GlobalNotificationContext';
+import { useSafeHomeNotifications } from '../context/SafeHomeNotificationContext';
 
 const { width } = Dimensions.get('window');
 
-interface GlobalFriendRequestNotificationProps {
+interface SafeHomeNotificationProps {
   topOffset?: number;
 }
 
 /**
- * Global Friend Request Notification - Displays friend request notifications globally
+ * Safe Home Notification - Displays safe home notifications globally
  * Works on any screen in the app
  */
-export const GlobalFriendRequestNotification: React.FC<GlobalFriendRequestNotificationProps> = ({
+export const SafeHomeNotification: React.FC<SafeHomeNotificationProps> = ({
   topOffset = 60,
 }) => {
-  const { activeNotification, notificationAnimValue, dismissNotification } = useGlobalNotifications();
+  const { activeNotification, notificationAnimValue, dismissNotification } = useSafeHomeNotifications();
   
-  console.log('[GlobalFriendRequestNotification] ========== COMPONENT RENDER ==========');
-  console.log('[GlobalFriendRequestNotification] topOffset:', topOffset);
-  console.log('[GlobalFriendRequestNotification] activeNotification:', activeNotification);
-  console.log('[GlobalFriendRequestNotification] notificationAnimValue:', notificationAnimValue);
+  console.log('[SafeHomeNotification] ========== COMPONENT RENDER ==========');
+  console.log('[SafeHomeNotification] topOffset:', topOffset);
+  console.log('[SafeHomeNotification] activeNotification:', activeNotification);
+  console.log('[SafeHomeNotification] notificationAnimValue:', notificationAnimValue);
   
   if (!activeNotification) {
-    console.log('[GlobalFriendRequestNotification] No active notification, returning null');
+    console.log('[SafeHomeNotification] No active notification, returning null');
     return null;
   }
   
-  console.log('[GlobalFriendRequestNotification] Rendering notification for:', activeNotification.senderName);
-  console.log('[GlobalFriendRequestNotification] ======================================');
+  console.log('[SafeHomeNotification] Rendering notification for:', activeNotification.senderName);
+  console.log('[SafeHomeNotification] ======================================');
 
   const handleNotificationTap = () => {
-// For friend request notifications, navigate to friends tab
-      console.log('[GlobalNotification] Friend request notification tapped, opening friends tab');
-      // Send a custom event to notify the app to switch to friends tab
-      // Using React Native's DeviceEventEmitter for cross-component communication
-      DeviceEventEmitter.emit('navigateToFriendsTab');
+    // For safe home notifications, just dismiss (no navigation needed)
+    console.log('[SafeHomeNotification] Safe home notification tapped, dismissing');
     
     // Dismiss the notification
     dismissNotification();
@@ -52,17 +49,17 @@ export const GlobalFriendRequestNotification: React.FC<GlobalFriendRequestNotifi
     <>
       <View style={styles.iconContainer}>
         <MaterialCommunityIcons 
-          name='account-plus' 
+          name='home-variant' 
           size={SIZES.ICON_MD} 
-          color={COLORS.PRIMARY_BLUE} 
+          color={COLORS.SUCCESS_GREEN} 
         />
       </View>
       <View style={styles.textContainer}>
         <Text style={styles.title} numberOfLines={1}>
-          New Friend Request
+          Safe Home
         </Text>
         <Text style={styles.subtitle} numberOfLines={2}>
-          {`${activeNotification.senderName || 'Someone'} wants to be your friend`}
+          {`${activeNotification.senderName || 'Someone'} has arrived home safely`}
         </Text>
       </View>
       <TouchableOpacity 

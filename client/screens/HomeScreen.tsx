@@ -43,7 +43,7 @@ import { shareFriendInvite } from '../utils/shareUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
 import { getFriendRequests, getFriendsWithToken } from '../services/friendService';
 import { reverseGeocode } from '../utils/geocoding';
-import { initializeWebSocket, disconnectWebSocket, setOnFriendRequestReceived, setOnFriendRequestResponded } from '../services/webSocketService';
+import { initializeWebSocket, disconnectWebSocket, setOnFriendRequestReceived, setOnFriendRequestResponded, emitSafeHome } from '../services/webSocketService';
 
 const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
@@ -598,10 +598,12 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
-  // Home button handler - shows notification
+  // Home button handler - shows notification and sends to friends
   const handleHomePress = () => {
-    console.log('Home button pressed - showing notification');
+    console.log('Home button pressed - showing notification and sending to friends');
     showHomeNotificationFn();
+    // Emit safe home event to all friends via WebSocket
+    emitSafeHome('has arrived home safely');
   };
 
   // Dismiss notification callback
@@ -612,7 +614,28 @@ export const HomeScreen: React.FC = () => {
   // Handle sending home status messages
   const handleSendHomeStatus = (statusType: HomeStatus) => {
     console.log(`Sending home status: ${statusType}`);
-    // TODO: Implement actual message sending logic
+    
+    // Format message based on status type
+    let message = '';
+    switch (statusType) {
+      case 'arrived':
+        message = 'has arrived home safely';
+        break;
+      case 'walking':
+        message = 'is walking home';
+        break;
+      case 'biking':
+        message = 'is biking away';
+        break;
+      case 'onMyWay':
+        message = 'is on the way';
+        break;
+      default:
+        message = statusType;
+    }
+    
+    // Emit safe home notification to friends via WebSocket
+    emitSafeHome(message);
   };
 
   // Toggle handlers - now using ToggleSwitch component which handles its own animation

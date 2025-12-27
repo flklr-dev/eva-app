@@ -2,6 +2,8 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/jwt';
 import User from '../models/User';
+import Friend from '../models/Friend';
+import { sendPushNotificationToUser } from '../services/notificationService';
 
 // Store connected users with socket instances
 interface ConnectedUser {
@@ -114,6 +116,66 @@ export const initializeWebSocket = (io: Server): void => {
         });
       } catch (error) {
         console.error('[WebSocket] Error handling friend request response:', error);
+      }
+    });
+
+    // Handle safe home event
+    socket.on('safe_home', async (data: { message: string }) => {
+      try {
+        console.log(`[WebSocket] Safe home event from ${userId} with message: ${data.message}`);
+        
+        // Get sender info
+        const sender = await User.findById(userId).select('name email profilePicture');
+        if (!sender) {
+          console.error('[WebSocket] Sender not found:', userId);
+          return;
+        }
+
+        // Get user's friends to broadcast to
+        
+        // Find all friends of this user (where userId is either requesterId or recipientId)
+        const friendRecords = await Friend.find({
+          $or: [
+            { requesterId: userId, status: 'accepted' },
+            { recipientId: userId, status: 'accepted' }
+          ]
+        });
+        
+        // Get friend user IDs - convert ObjectIds to strings for proper comparison
+        const friendIds = friendRecords.map((friend: any) => {
+          const requesterId = friend.requesterId.toString();
+          const recipientId = friend.recipientId.toString();
+          return requesterId === userId ? recipientId : requesterId;
+        });
+        
+        console.log(`[WebSocket] Broadcasting safe home to ${friendIds.length} friends:`, friendIds);
+        
+        // Emit safe home event to all connected friends
+        // For offline friends, send push notification via Expo
+        for (const friendId of friendIds) {
+          const friendSocket = findSocketByUserId(friendId);
+          if (friendSocket) {
+            // Friend is online - send via WebSocket (they'll show in-app notification)
+            friendSocket.emit('friend_safe_home', {
+              userId: userId,
+              userName: sender.name,
+              message: data.message,
+              timestamp: new Date().toISOString()
+            });
+            console.log(`[WebSocket] Safe home notification sent to online friend: ${friendId}`);
+          } else {
+            // Friend is offline - send push notification via Expo
+            console.log(`[WebSocket] Friend ${friendId} is offline, sending push notification`);
+            await sendPushNotificationToUser(
+              friendId,
+              'Safe Home',
+              `${sender.name} ${data.message}`,
+              { eventType: 'friend_safe_home', userId: userId, userName: sender.name }
+            );
+          }
+        }
+      } catch (error) {
+        console.error('[WebSocket] Error handling safe home event:', error);
       }
     });
 
