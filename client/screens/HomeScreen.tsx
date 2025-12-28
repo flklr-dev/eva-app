@@ -41,7 +41,7 @@ import { Activity } from '../types/activity';
 import { calculateDistance } from '../utils/distanceCalculator';
 import { shareFriendInvite } from '../utils/shareUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
-import { getFriendRequests, getFriendsWithToken } from '../services/friendService';
+import { getFriendRequests, getFriendsWithToken, removeFriend } from '../services/friendService';
 import { reverseGeocode } from '../utils/geocoding';
 import { initializeWebSocket, disconnectWebSocket, setOnFriendRequestReceived, setOnFriendRequestResponded, emitSafeHome } from '../services/webSocketService';
 
@@ -563,13 +563,44 @@ export const HomeScreen: React.FC = () => {
   };
   
   const handleRemoveFriend = async (friend: FriendWithDistance) => {
-    // TODO: Implement remove friend API call
     console.log('Remove friend pressed for:', friend.name);
-    // For now, just close the panel
-    setSelectedFriend(null);
-    if (friendsTabRef.current) {
-      friendsTabRef.current.resetMapView();
-    }
+    
+    // Show confirmation dialog before removing
+    Alert.alert(
+      'Remove Friend',
+      `Are you sure you want to remove ${friend.name} from your friends list? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Call the API to remove the friend
+              await removeFriend(friend.id);
+              
+              // Show success message
+              Alert.alert('Success', `${friend.name} has been removed from your friends list.`);
+              
+              // Close the panel and reset map view
+              setSelectedFriend(null);
+              if (friendsTabRef.current) {
+                friendsTabRef.current.resetMapView();
+              }
+              
+              // Refresh the friends list to reflect the change
+              await loadFriends();
+            } catch (error) {
+              console.error('Error removing friend:', error);
+              Alert.alert('Error', `Failed to remove ${friend.name}. Please try again.`);
+            }
+          },
+        },
+      ]
+    );
   };
   
   // Bluetooth state (shared across tabs)
