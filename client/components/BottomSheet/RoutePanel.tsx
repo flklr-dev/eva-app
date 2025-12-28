@@ -13,6 +13,7 @@ type TransportMode = 'car' | 'walk' | 'bus' | 'motorcycle';
 interface RoutePanelProps {
   friend: FriendWithDistance;
   onClose: () => void;
+  onBackToDetails?: () => void;
   onTransportModeChange?: (mode: TransportMode, routeData: RouteData) => void;
   userLocation: { latitude: number; longitude: number };
 }
@@ -32,6 +33,7 @@ export const RoutePanel: React.FC<RoutePanelProps> = ({
   onClose,
   onTransportModeChange,
   userLocation,
+  onBackToDetails,
 }) => {
   const [selectedMode, setSelectedMode] = useState<TransportMode>('car');
   const [routeData, setRouteData] = useState<RouteData | null>(null);
@@ -186,7 +188,11 @@ export const RoutePanel: React.FC<RoutePanelProps> = ({
         useNativeDriver: true,
       }),
     ]).start(() => {
-      onClose();
+      if (onBackToDetails) {
+        onBackToDetails();
+      } else {
+        onClose();
+      }
     });
   };
 
@@ -241,22 +247,22 @@ export const RoutePanel: React.FC<RoutePanelProps> = ({
 
       {/* Transportation Mode Buttons */}
       <View style={styles.modeButtonsContainer}>
-        {(['car', 'walk', 'bus', 'motorcycle'] as TransportMode[]).map((mode) => (
-          <TouchableOpacity
-            key={mode}
-            style={[
-              styles.modeButton,
-              selectedMode === mode && styles.modeButtonActive,
-            ]}
-            onPress={() => handleModePress(mode)}
-            activeOpacity={0.7}
-          >
-            <MaterialCommunityIcons
-              name={getTransportIcon(mode)}
-              size={24}
-              color={selectedMode === mode ? COLORS.PRIMARY_BLUE : COLORS.TEXT_SECONDARY}
-            />
-          </TouchableOpacity>
+        {(['car', 'walk', 'bus', 'motorcycle'] as TransportMode[]).map((mode, index, array) => (
+          <View key={mode} style={index === array.length - 1 ? styles.modeButtonWrapperLast : styles.modeButtonWrapper}>
+            <BlurView intensity={60} tint="light" style={[styles.modeButtonBlur, selectedMode === mode && styles.modeButtonBlurActive]}>
+              <TouchableOpacity
+                style={styles.modeButton}
+                onPress={() => handleModePress(mode)}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons
+                  name={getTransportIcon(mode)}
+                  size={24}
+                  color={selectedMode === mode ? COLORS.PRIMARY_BLUE : COLORS.TEXT_SECONDARY}
+                />
+              </TouchableOpacity>
+            </BlurView>
+          </View>
         ))}
       </View>
 
@@ -328,19 +334,26 @@ const styles = StyleSheet.create({
     gap: SPACING.SM,
     marginBottom: SPACING.LG,
   },
-  modeButton: {
+  modeButtonWrapper: {
     flex: 1,
-    height: 56,
     borderRadius: BORDER_RADIUS.SM,
-    backgroundColor: COLORS.BACKGROUND_GRAY,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    overflow: 'hidden',
+    marginRight: SPACING.SM,
   },
-  modeButtonActive: {
+  modeButtonWrapperLast: {
+    flex: 1,
+    borderRadius: BORDER_RADIUS.SM,
+    overflow: 'hidden',
+  },
+  modeButtonBlur: {
+    backgroundColor: Platform.OS === 'ios' ? COLORS.OVERLAY_WHITE_LIGHT : COLORS.OVERLAY_WHITE_MEDIUM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER_WHITE,
+    borderRadius: BORDER_RADIUS.SM,
+  },
+  modeButtonBlurActive: {
     backgroundColor: COLORS.BACKGROUND_WHITE,
-    borderColor: COLORS.PRIMARY_BLUE,
+    borderRadius: BORDER_RADIUS.SM,
     ...Platform.select({
       ios: {
         shadowColor: COLORS.PRIMARY_BLUE,
@@ -352,6 +365,11 @@ const styles = StyleSheet.create({
         elevation: 4,
       },
     }),
+  },
+  modeButton: {
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   routeInfoContainer: {
     borderRadius: BORDER_RADIUS.MD,

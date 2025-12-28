@@ -5,6 +5,7 @@ export { FriendsListPanel } from './FriendsListPanel';
 export { FriendRequestsPanel } from './FriendRequestsPanel';
 export { FriendDetailsPanel } from './FriendDetailsPanel';
 export { RoutePanel } from './RoutePanel';
+export { ContactDetailsPanel } from './ContactDetailsPanel';
 export { ActivityListPanel } from './ActivityListPanel';
 export { DevicePanel } from './DevicePanel';
 

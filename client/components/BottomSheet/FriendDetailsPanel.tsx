@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: BORDER_RADIUS.MD,
     overflow: 'hidden',
-    minHeight: 130,
+    minHeight: 125,
   },
   actionButtonBlur: {
     flex: 1,
@@ -363,6 +363,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.MD,
     overflow: 'hidden',
     minHeight: 56,
+    marginBottom: SPACING.MD,
   },
   removeButtonBlur: {
     flex: 1,

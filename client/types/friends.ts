@@ -12,6 +12,8 @@ export interface Friend {
     longitude: number;
   };
   status: 'online' | 'offline' | 'away';
+  phone?: string;
+  email?: string;
 }
 
 export interface FriendWithDistance extends Friend {

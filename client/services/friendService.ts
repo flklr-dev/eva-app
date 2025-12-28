@@ -70,6 +70,7 @@ export const getFriendRequests = async (tokenFromContext?: string | null): Promi
     id: string;
     name: string;
     email: string;
+    phone?: string;
     profilePicture?: string;
     status: string;
     isRequester: boolean;
@@ -80,6 +81,7 @@ export const getFriendRequests = async (tokenFromContext?: string | null): Promi
     id: string;
     name: string;
     email: string;
+    phone?: string;
     profilePicture?: string;
     status: string;
     isRequester: boolean;
@@ -143,6 +145,7 @@ export const getFriends = async (): Promise<
     id: string;
     name: string;
     email: string;
+    phone?: string;
     profilePicture?: string;
     status: string;
     isRequester: boolean;
@@ -176,6 +179,7 @@ export const getFriendsWithToken = async (token: string): Promise<
     id: string;
     name: string;
     email: string;
+    phone?: string;
     profilePicture?: string;
     status: string;
     isRequester: boolean;
@@ -256,6 +260,7 @@ export const getFriendDetails = async (friendId: string): Promise<{
   id: string;
   name: string;
   email: string;
+  phone?: string;
   profilePicture?: string;
   status: string;
   isRequester: boolean;

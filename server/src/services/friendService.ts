@@ -33,6 +33,7 @@ export interface FriendWithDetails {
   requestId?: string; // The actual friend request document ID (only for pending requests)
   name: string;
   email: string;
+  phone?: string;
   profilePicture?: string;
   status: 'pending' | 'accepted' | 'rejected' | 'blocked';
   isRequester: boolean;
@@ -204,17 +205,19 @@ export const getFriendRequests = async (userId: string): Promise<{
   received: FriendWithDetails[];
 }> => {
   const [sentRequests, receivedRequests] = await Promise.all([
-    Friend.find({ requesterId: userId, status: 'pending' }).populate('recipientId', 'name email profilePicture'),
-    Friend.find({ recipientId: userId, status: 'pending' }).populate('requesterId', 'name email profilePicture'),
+    Friend.find({ requesterId: userId, status: 'pending' }).populate('recipientId', 'name email phone profilePicture'),
+    Friend.find({ recipientId: userId, status: 'pending' }).populate('requesterId', 'name email phone profilePicture'),
   ]);
 
   const sent = sentRequests.map((request) => {
     const recipient = request.recipientId as unknown as IUser;
+    console.log('[FriendService] Sent request - Name:', recipient.name, 'Phone:', recipient.phone || 'No phone');
     return {
       id: recipient._id.toString(),
       requestId: request._id.toString(),
       name: recipient.name,
       email: recipient.email,
+      phone: recipient.phone,
       profilePicture: recipient.profilePicture,
       status: request.status,
       isRequester: true,
@@ -224,11 +227,13 @@ export const getFriendRequests = async (userId: string): Promise<{
 
   const received = receivedRequests.map((request) => {
     const requester = request.requesterId as unknown as IUser;
+    console.log('[FriendService] Received request - Name:', requester.name, 'Phone:', requester.phone || 'No phone');
     return {
       id: requester._id.toString(),
       requestId: request._id.toString(),
       name: requester.name,
       email: requester.email,
+      phone: requester.phone,
       profilePicture: requester.profilePicture,
       status: request.status,
       isRequester: false,
@@ -306,15 +311,20 @@ export const respondToFriendRequest = async (
  * Get all friends for a user
  */
 export const getFriends = async (userId: string): Promise<FriendWithDetails[]> => {
+  console.log('[FriendService] ========== GET FRIENDS ==========');
+  console.log('[FriendService] Fetching friends for userId:', userId);
+  
   const friendships = await Friend.find({
     $or: [
       { requesterId: userId, status: 'accepted' },
       { recipientId: userId, status: 'accepted' },
     ],
   })
-    .populate('requesterId', 'name email profilePicture isActive lastSeen lastKnownLocation')
-    .populate('recipientId', 'name email profilePicture isActive lastSeen lastKnownLocation')
+    .populate('requesterId', 'name email phone profilePicture isActive lastSeen lastKnownLocation')
+    .populate('recipientId', 'name email phone profilePicture isActive lastSeen lastKnownLocation')
     .sort({ updatedAt: -1 });
+
+  console.log('[FriendService] Found', friendships.length, 'friendships');
 
   const friends = friendships.map((friendship) => {
     // After populate, requesterId/recipientId are User objects, not ObjectIds
@@ -327,11 +337,15 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
 
     // Determine online status based on lastSeen timestamp
     const isOnline = isUserOnline(friendUser.lastSeen);
+    
+    // Log phone number info
+    console.log('[FriendService] Friend:', friendUser.name, 'Phone:', friendUser.phone || 'No phone');
 
     return {
       id: friendUser._id.toString(),
       name: friendUser.name,
       email: friendUser.email,
+      phone: friendUser.phone, // Add phone field
       profilePicture: friendUser.profilePicture,
       status: friendship.status as 'accepted',
       isRequester,
@@ -343,6 +357,9 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
     };
   });
 
+  console.log('[FriendService] Returning', friends.length, 'friends with phone numbers');
+  console.log('[FriendService] =====================================');
+  
   return friends;
 };
 
@@ -386,16 +403,20 @@ export const getFriendDetails = async (userId: string, friendId: string): Promis
     throw new Error('Cannot get details for yourself');
   }
 
+  console.log('[FriendService] ========== GET FRIEND DETAILS ==========');
+  console.log('[FriendService] Fetching details for friendId:', friendId, 'for userId:', userId);
+
   const friendship = await Friend.findOne({
     $or: [
       { requesterId: userId, recipientId: friendId, status: 'accepted' },
       { requesterId: friendId, recipientId: userId, status: 'accepted' },
     ],
   })
-    .populate('requesterId', 'name email profilePicture isActive lastSeen lastKnownLocation')
-    .populate('recipientId', 'name email profilePicture isActive lastSeen lastKnownLocation');
+    .populate('requesterId', 'name email phone profilePicture isActive lastSeen lastKnownLocation')
+    .populate('recipientId', 'name email phone profilePicture isActive lastSeen lastKnownLocation');
 
   if (!friendship) {
+    console.log('[FriendService] Friendship not found for:', { userId, friendId });
     throw new Error('Friendship not found');
   }
 
@@ -409,11 +430,16 @@ export const getFriendDetails = async (userId: string, friendId: string): Promis
 
   // Determine online status based on lastSeen timestamp
   const isOnline = isUserOnline(friendUser.lastSeen);
+  
+  // Log phone number info
+  console.log('[FriendService] Friend details - Name:', friendUser.name, 'Phone:', friendUser.phone || 'No phone');
+  console.log('[FriendService] =====================================');
 
   return {
     id: friendUser._id.toString(),
     name: friendUser.name,
     email: friendUser.email,
+    phone: friendUser.phone, // Add phone field
     profilePicture: friendUser.profilePicture,
     status: friendship.status as 'accepted',
     isRequester,
