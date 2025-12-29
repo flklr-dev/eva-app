@@ -6,13 +6,21 @@ import { getCleanedApiBaseUrl } from '../utils/apiConfig';
 
 // Configure notification behavior
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    console.log('[NotificationHandler] Received notification:', {
+      title: notification.request.content.title,
+      body: notification.request.content.body,
+      data: notification.request.content.data,
+    });
+
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    };
+  },
 });
 
 export interface NotificationService {
@@ -25,39 +33,62 @@ export interface NotificationService {
 export const registerForPushNotifications = async (): Promise<string | null> => {
   let token = null;
 
+  console.log('[Notifications] Starting push notification registration...');
+  console.log('[Notifications] Is device:', Device.isDevice);
+  console.log('[Notifications] Platform:', Platform.OS);
+
   if (Device.isDevice) {
+    console.log('[Notifications] Checking current permissions...');
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    console.log('[Notifications] Current permission status:', existingStatus);
+
     let finalStatus = existingStatus;
 
     if (existingStatus !== 'granted') {
+      console.log('[Notifications] Requesting permissions...');
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
+      console.log('[Notifications] Permission request result:', status);
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
+      console.error('[Notifications] ❌ Permission denied! Status:', finalStatus);
+      console.error('[Notifications] Push notifications will not work without permission');
       return null;
     }
+
+    console.log('[Notifications] ✅ Permission granted, getting push token...');
 
     try {
       const projectId = Constants.expoConfig?.extra?.eas?.projectId;
       console.log('[Notifications] Project ID from config:', projectId);
-      
+
       if (!projectId) {
-        console.error('[Notifications] No project ID found in app config!');
+        console.error('[Notifications] ❌ No project ID found in app config!');
         console.error('[Notifications] expoConfig:', JSON.stringify(Constants.expoConfig, null, 2));
         return null;
       }
-      
-      token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-      console.log('[Notifications] Expo Push Token obtained:', token);
+
+      console.log('[Notifications] Requesting Expo push token...');
+      const pushTokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
+      token = pushTokenResult.data;
+      console.log('[Notifications] ✅ Expo Push Token obtained:', token?.substring(0, 20) + '...');
+
+      // Validate token format
+      if (!token || !token.startsWith('ExponentPushToken[')) {
+        console.error('[Notifications] ❌ Invalid token format:', token);
+        return null;
+      }
+
     } catch (error) {
-      console.error('Error getting push token:', error);
+      console.error('[Notifications] ❌ Error getting push token:', error);
+      return null;
     }
 
     // Android specific channel setup
     if (Platform.OS === 'android') {
-      Notifications.setNotificationChannelAsync('default', {
+      console.log('[Notifications] Setting up Android notification channel...');
+      await Notifications.setNotificationChannelAsync('default', {
         name: 'default',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
@@ -66,9 +97,13 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
         enableVibrate: true,
         enableLights: true,
       });
+      console.log('[Notifications] ✅ Android notification channel set up');
     }
+
+    console.log('[Notifications] ✅ Push notification registration completed successfully');
   } else {
-    console.log('Must use physical device for Push Notifications');
+    console.warn('[Notifications] ⚠️ Must use physical device for Push Notifications');
+    console.warn('[Notifications] Expo Go has limited push notification support');
   }
 
   return token;

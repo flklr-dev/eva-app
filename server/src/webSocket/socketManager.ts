@@ -70,8 +70,27 @@ export const initializeWebSocket = (io: Server): void => {
           console.error('[WebSocket] Sender not found:', userId);
           return;
         }
+        
+        // Ensure sender name is available
+        if (!sender.name) {
+          console.warn('[WebSocket] Sender name is missing, using default:', userId);
+          sender.name = 'A friend'; // Default fallback name
+        }
 
-        // Emit event to recipient if they're online
+        // Send push notification for friend request - reliable delivery
+        console.log(`[WebSocket] Sending friend request push notification to ${data.recipientId}`);
+        await sendPushNotificationToUser(
+          data.recipientId,
+          'New Friend Request',
+          `${sender.name} wants to be your friend`,
+          {
+            eventType: 'friend_request_received',
+            senderId: userId,
+            requestId: '', // Will be set by the friend service
+          }
+        );
+
+        // Send WebSocket message for real-time feel (no connectivity check needed)
         const recipientSocket = findSocketByUserId(data.recipientId);
         if (recipientSocket) {
           recipientSocket.emit('friend_request_received', {
@@ -82,9 +101,6 @@ export const initializeWebSocket = (io: Server): void => {
             senderProfilePicture: sender.profilePicture,
             timestamp: new Date().toISOString()
           });
-          console.log(`[WebSocket] Friend request notification sent to ${data.recipientId}`);
-        } else {
-          console.log(`[WebSocket] Recipient ${data.recipientId} is not online`);
         }
       } catch (error) {
         console.error('[WebSocket] Error handling friend request sent:', error);
@@ -103,17 +119,46 @@ export const initializeWebSocket = (io: Server): void => {
           return;
         }
 
-        // TODO: Get the original requester ID from the friend request
-        // This would require querying the Friend model to find the requester
-        
-        // For now, we'll emit to all connected users (this should be improved)
-        socket.broadcast.emit(`friend_request_${data.action}`, {
-          requestId: data.requestId,
-          responderId: userId,
-          responderName: responder.name,
-          action: data.action,
-          timestamp: new Date().toISOString()
-        });
+        // Get the original requester ID from the friend request
+        const friendRequest = await Friend.findById(data.requestId);
+        if (!friendRequest) {
+          console.error('[WebSocket] Friend request not found:', data.requestId);
+          return;
+        }
+
+        const requesterId = friendRequest.requesterId.toString();
+        const recipientId = friendRequest.recipientId.toString();
+
+        // Determine who to notify (the other person in the friend request)
+        const targetUserId = requesterId === userId ? recipientId : requesterId;
+
+        console.log(`[WebSocket] Notifying ${targetUserId} about friend request ${data.action}`);
+
+        // Send push notification for friend request response - reliable delivery
+        const actionText = data.action === 'accept' ? 'accepted' : 'declined';
+        console.log(`[WebSocket] Sending friend request response push notification to ${targetUserId}`);
+        await sendPushNotificationToUser(
+          targetUserId,
+          'Friend Request ' + (data.action === 'accept' ? 'Accepted' : 'Declined'),
+          `${responder.name} ${actionText} your friend request`,
+          {
+            eventType: `friend_request_${data.action}`,
+            responderId: userId,
+            requestId: data.requestId,
+          }
+        );
+
+        // Send WebSocket message for real-time feel (no connectivity check needed)
+        const targetSocket = findSocketByUserId(targetUserId);
+        if (targetSocket) {
+          targetSocket.emit(`friend_request_${data.action}`, {
+            requestId: data.requestId,
+            responderId: userId,
+            responderName: responder.name,
+            action: data.action,
+            timestamp: new Date().toISOString()
+          });
+        }
       } catch (error) {
         console.error('[WebSocket] Error handling friend request response:', error);
       }
@@ -129,6 +174,12 @@ export const initializeWebSocket = (io: Server): void => {
         if (!sender) {
           console.error('[WebSocket] Sender not found:', userId);
           return;
+        }
+        
+        // Ensure sender name is available
+        if (!sender.name) {
+          console.warn('[WebSocket] Sender name is missing, using default:', userId);
+          sender.name = 'A friend'; // Default fallback name
         }
 
         // Get user's friends to broadcast to
@@ -149,33 +200,97 @@ export const initializeWebSocket = (io: Server): void => {
         });
         
         console.log(`[WebSocket] Broadcasting safe home to ${friendIds.length} friends:`, friendIds);
-        
-        // Emit safe home event to all connected friends
-        // For offline friends, send push notification via Expo
+
+        // Send push notifications for safety messages - reliable delivery
         for (const friendId of friendIds) {
+          console.log(`[WebSocket] Sending safe home push notification to friend: ${friendId}`);
+          await sendPushNotificationToUser(
+            friendId,
+            'Safe Home',
+            `${sender.name} ${data.message}`,
+            { eventType: 'friend_safe_home', userId: userId, userName: sender.name }
+          );
+
+          // Send WebSocket message for real-time feel (no connectivity check needed)
           const friendSocket = findSocketByUserId(friendId);
           if (friendSocket) {
-            // Friend is online - send via WebSocket (they'll show in-app notification)
             friendSocket.emit('friend_safe_home', {
               userId: userId,
               userName: sender.name,
               message: data.message,
               timestamp: new Date().toISOString()
             });
-            console.log(`[WebSocket] Safe home notification sent to online friend: ${friendId}`);
-          } else {
-            // Friend is offline - send push notification via Expo
-            console.log(`[WebSocket] Friend ${friendId} is offline, sending push notification`);
-            await sendPushNotificationToUser(
-              friendId,
-              'Safe Home',
-              `${sender.name} ${data.message}`,
-              { eventType: 'friend_safe_home', userId: userId, userName: sender.name }
-            );
           }
         }
       } catch (error) {
         console.error('[WebSocket] Error handling safe home event:', error);
+      }
+    });
+
+    // Handle quick action message event
+    socket.on('quick_action_message', async (data: { message: string, type: string }) => {
+      try {
+        console.log(`[WebSocket] Quick action message from ${userId} with type: ${data.type} and message: ${data.message}`);
+
+        // Get sender info
+        const sender = await User.findById(userId).select('name email profilePicture');
+        if (!sender) {
+          console.error('[WebSocket] Sender not found:', userId);
+          return;
+        }
+
+        // Ensure sender name is available
+        if (!sender.name) {
+          console.warn('[WebSocket] Sender name is missing, using default:', userId);
+          sender.name = 'A friend'; // Default fallback name
+        }
+
+        // Find all friends of this user (where userId is either requesterId or recipientId)
+        const friendRecords = await Friend.find({
+          $or: [
+            { requesterId: userId, status: 'accepted' },
+            { recipientId: userId, status: 'accepted' }
+          ]
+        });
+
+        // Get friend user IDs - convert ObjectIds to strings for proper comparison
+        const friendIds = friendRecords.map((friend: any) => {
+          const requesterId = friend.requesterId.toString();
+          const recipientId = friend.recipientId.toString();
+          return requesterId === userId ? recipientId : requesterId;
+        });
+
+        console.log(`[WebSocket] Broadcasting quick action message to ${friendIds.length} friends:`, friendIds);
+
+        // Send push notifications for safety messages - reliable delivery
+        for (const friendId of friendIds) {
+          console.log(`[WebSocket] Sending push notification to friend: ${friendId}`);
+          await sendPushNotificationToUser(
+            friendId,
+            'Message',
+            `${sender.name} ${data.message}`,
+            {
+              eventType: 'friend_quick_action_message',
+              userId: userId,
+              userName: sender.name,
+              type: data.type
+            }
+          );
+
+          // Send WebSocket message for real-time feel (no connectivity check needed)
+          const friendSocket = findSocketByUserId(friendId);
+          if (friendSocket) {
+            friendSocket.emit('friend_quick_action_message', {
+              userId: userId,
+              userName: sender.name,
+              message: data.message,
+              type: data.type,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+      } catch (error) {
+        console.error('[WebSocket] Error handling quick action message event:', error);
       }
     });
 

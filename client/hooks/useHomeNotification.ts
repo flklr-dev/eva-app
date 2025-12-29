@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Animated } from 'react-native';
 import { ANIMATION_CONFIG } from '../constants/theme';
+import { QuickActionType } from '../components/LocationTab/HomeNotification';
 
 /**
  * Custom hook to manage home notification lifecycle
@@ -8,6 +9,7 @@ import { ANIMATION_CONFIG } from '../constants/theme';
  */
 export const useHomeNotification = () => {
   const [isVisible, setIsVisible] = useState(false);
+  const [actionType, setActionType] = useState<QuickActionType>('safeHome');
   const animValue = useRef(new Animated.Value(0)).current;
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -55,7 +57,8 @@ export const useHomeNotification = () => {
     }
   }, [isVisible, animValue]);
 
-  const show = () => {
+  const show = (type: QuickActionType = 'safeHome') => {
+    setActionType(type);
     setIsVisible(true);
   };
 
@@ -76,6 +79,7 @@ export const useHomeNotification = () => {
   return {
     isVisible,
     animValue,
+    actionType,
     show,
     dismiss,
   };

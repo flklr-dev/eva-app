@@ -11,6 +11,8 @@ import { GlobalNotificationProvider } from './context/GlobalNotificationContext'
 import { GlobalFriendRequestNotification } from './components/GlobalFriendRequestNotification';
 import { SafeHomeNotificationProvider } from './context/SafeHomeNotificationContext';
 import { SafeHomeNotification } from './components/SafeHomeNotification';
+import { QuickActionNotificationProvider } from './context/QuickActionNotificationContext';
+import { QuickActionNotification } from './components/QuickActionNotification';
 
 /**
  * Deep Link Handler Component
@@ -199,15 +201,18 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <SafeHomeNotificationProvider>
-          <GlobalNotificationProvider>
-            <DeepLinkHandler />
-            <StatusBar style="dark" />
-            <GlobalFriendRequestNotification />
-            <SafeHomeNotification />
-            <AppNavigator />
-          </GlobalNotificationProvider>
-        </SafeHomeNotificationProvider>
+        <QuickActionNotificationProvider>
+          <SafeHomeNotificationProvider>
+            <GlobalNotificationProvider>
+              <DeepLinkHandler />
+              <StatusBar style="dark" />
+              <GlobalFriendRequestNotification />
+              <SafeHomeNotification />
+              <QuickActionNotification />
+              <AppNavigator />
+            </GlobalNotificationProvider>
+          </SafeHomeNotificationProvider>
+        </QuickActionNotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

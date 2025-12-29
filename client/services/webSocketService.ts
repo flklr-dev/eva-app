@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { showGlobalFriendRequestNotification } from '../context/GlobalNotificationContext';
 import { showGlobalSafeHomeNotification } from '../context/SafeHomeNotificationContext';
+import { showGlobalQuickActionNotification } from '../context/QuickActionNotificationContext';
 
 let socket: Socket | null = null;
 let reconnectAttempts = 0;
@@ -153,6 +154,12 @@ export const initializeWebSocket = async (): Promise<void> => {
       handleFriendSafeHome(data);
     });
 
+    // Quick action message events from friends
+    socket.on('friend_quick_action_message', (data: { userId: string; userName: string; message: string; type: string; timestamp: string }) => {
+      console.log('[WebSocket] Friend sent message:', data);
+      handleFriendQuickActionMessage(data);
+    });
+
     isConnecting = false;
   } catch (error) {
     console.error('[WebSocket] Initialization error:', error);
@@ -166,7 +173,7 @@ const handleFriendRequestReceived = async (data: FriendRequestEventData) => {
     console.log('[WebSocket] ========== FRIEND REQUEST RECEIVED ==========');
     console.log('[WebSocket] Processing friend request from:', data.senderName);
     console.log('[WebSocket] Full data:', JSON.stringify(data));
-    
+
     // Show global in-app notification
     console.log('[WebSocket] About to call showGlobalFriendRequestNotification');
     try {
@@ -181,27 +188,10 @@ const handleFriendRequestReceived = async (data: FriendRequestEventData) => {
     } catch (notifError) {
       console.error('[WebSocket] ✗ Error calling showGlobalFriendRequestNotification:', notifError);
     }
-    
-    // Show local push notification
-    console.log('[WebSocket] About to schedule local push notification');
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'New Friend Request',
-        body: `${data.senderName} wants to be your friend`,
-        data: {
-          eventType: 'friend_request_received',
-          senderId: data.senderId,
-          requestId: data.requestId,
-        },
-        sound: 'default',
-        badge: 1,
-      },
-      trigger: null, // Immediate notification
-    });
 
-    console.log('[WebSocket] Friend request notification sent');
+    console.log('[WebSocket] Friend request notification processed');
     console.log('[WebSocket] ========================================');
-    
+
     // Call all registered callbacks
     friendRequestReceivedCallbacks.forEach(callback => {
       try {
@@ -323,6 +313,32 @@ const handleFriendSafeHome = async (data: { userId: string; userName: string; me
   }
 };
 
+// Handle friend quick action message notification
+const handleFriendQuickActionMessage = async (data: { userId: string; userName: string; message: string; type: string; timestamp: string }) => {
+  try {
+    console.log('[WebSocket] Processing friend message from:', data.userName, 'Type:', data.type);
+
+    // Show global in-app notification (app is active since WebSocket is connected)
+    // Note: Push notifications are now handled by the server, not scheduled here
+    try {
+      showGlobalQuickActionNotification({
+        id: data.userId + '_quickaction_' + Date.now(),
+        message: `${data.userName || 'A friend'} ${data.message}`,
+        type: data.type,
+        timestamp: new Date(data.timestamp),
+        eventType: 'quick_action',
+      });
+      console.log('[WebSocket] Quick action in-app notification shown');
+    } catch (notifError) {
+      console.error('[WebSocket] Error showing quick action notification:', notifError);
+    }
+
+    console.log('[WebSocket] Message notification processed');
+  } catch (error) {
+    console.error('[WebSocket] Error handling friend message:', error);
+  }
+};
+
 // Disconnect WebSocket
 export const disconnectWebSocket = (): void => {
   if (socket) {
@@ -352,6 +368,16 @@ export const emitSafeHome = (message: string): void => {
     console.log('[WebSocket] Safe home event emitted to friends');
   } else {
     console.log('[WebSocket] Cannot emit safe home event - not connected');
+  }
+};
+
+// Emit message to friends
+export const emitQuickActionMessage = (message: string, type: string): void => {
+  if (socket?.connected) {
+    socket.emit('quick_action_message', { message, type });
+    console.log('[WebSocket] Message emitted to friends');
+  } else {
+    console.log('[WebSocket] Cannot emit message - not connected');
   }
 };
 

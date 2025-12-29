@@ -4,10 +4,13 @@ import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SIZES, SHADOWS, ANIMATION_CONFIG } from '../../constants/theme';
 
+export type QuickActionType = 'arrived' | 'walking' | 'biking' | 'onMyWay' | 'safeHome';
+
 interface HomeNotificationProps {
   animValue: Animated.Value;
   onDismiss: () => void;
   topOffset: number;
+  actionType?: QuickActionType;
 }
 
 /**
@@ -17,17 +20,57 @@ export const HomeNotification: React.FC<HomeNotificationProps> = ({
   animValue,
   onDismiss,
   topOffset,
+  actionType = 'safeHome',
 }) => {
   const isAndroid = Platform.OS === 'android';
+  
+  // Get notification content based on action type
+  const getNotificationContent = () => {
+    switch (actionType) {
+      case 'arrived':
+        return {
+          title: 'You sent Arrived Home',
+          message: 'You arrived home',
+          iconName: 'home-variant',
+        };
+      case 'walking':
+        return {
+          title: 'You sent Walking Home',
+          message: 'You are walking home',
+          iconName: 'walk',
+        };
+      case 'biking':
+        return {
+          title: 'You sent Biking Away',
+          message: 'You are biking away',
+          iconName: 'bike',
+        };
+      case 'onMyWay':
+        return {
+          title: 'You sent On My Way',
+          message: 'You are on your way',
+          iconName: 'map-marker',
+        };
+      case 'safeHome':
+      default:
+        return {
+          title: 'Send Safe home',
+          message: 'You are safely home.',
+          iconName: 'home-variant',
+        };
+    }
+  };
+  
+  const { title, message, iconName } = getNotificationContent();
   
   const notificationContent = (
     <>
       <View style={styles.homeNotificationIconCircle}>
-        <MaterialCommunityIcons name="home-variant" size={SIZES.ICON_MD} color={COLORS.BACKGROUND_WHITE} />
+        <MaterialCommunityIcons name={iconName as any} size={SIZES.ICON_MD} color={COLORS.BACKGROUND_WHITE} />
       </View>
       <View style={styles.homeNotificationTextContainer}>
-        <Text style={styles.homeNotificationTitle}>Send Safe home</Text>
-        <Text style={styles.homeNotificationSubtitle}>You are safely home.</Text>
+        <Text style={styles.homeNotificationTitle}>{title}</Text>
+        <Text style={styles.homeNotificationSubtitle}>{message}</Text>
       </View>
     </>
   );

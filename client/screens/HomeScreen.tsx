@@ -22,6 +22,7 @@ import { COLORS, ANIMATION_CONFIG, SPACING } from '../constants/theme';
 import { useSOSAnimation } from '../hooks/useSOSAnimation';
 import { useHomeNotification } from '../hooks/useHomeNotification';
 import { useQuickActionMode } from '../hooks/useQuickActionMode';
+import { useQuickActionNotifications } from '../context/QuickActionNotificationContext';
 import type { QuickActionKey, HomeStatus } from '../types/quickActions';
 import { QuickActionButton } from '../components/QuickActions';
 import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, FriendRequestsPanel, FriendDetailsPanel, RoutePanel, ContactDetailsPanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
@@ -43,7 +44,8 @@ import { shareFriendInvite } from '../utils/shareUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
 import { getFriendRequests, getFriendsWithToken, removeFriend } from '../services/friendService';
 import { reverseGeocode } from '../utils/geocoding';
-import { initializeWebSocket, disconnectWebSocket, setOnFriendRequestReceived, setOnFriendRequestResponded, emitSafeHome } from '../services/webSocketService';
+import { initializeWebSocket, disconnectWebSocket, setOnFriendRequestReceived, setOnFriendRequestResponded, emitSafeHome, emitQuickActionMessage } from '../services/webSocketService';
+import { QuickActionType } from '../components/LocationTab/HomeNotification';
 
 const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
@@ -111,9 +113,9 @@ const mockActivities: Activity[] = [
 
 // ACTION_BUTTONS now imported from constants/quickActions.ts
 
-const LocationTab: React.FC<{ 
-  showHomeNotification?: boolean; 
-  homeNotificationAnim?: Animated.Value; 
+const LocationTab: React.FC<{
+  showHomeNotification?: boolean;
+  homeNotificationAnim?: Animated.Value;
   onDismissNotification?: () => void;
   sharedUserLocation?: { latitude: number; longitude: number } | null;
   sharedLocationPermissionGranted?: boolean;
@@ -121,9 +123,10 @@ const LocationTab: React.FC<{
   onLocationPermissionChange?: (granted: boolean) => void;
   sharedInitialRegion?: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
   friends?: FriendWithDistance[];
-}> = ({ 
-  showHomeNotification = false, 
-  homeNotificationAnim, 
+  actionType?: QuickActionType;
+}> = ({
+  showHomeNotification = false,
+  homeNotificationAnim,
   onDismissNotification,
   sharedUserLocation,
   sharedLocationPermissionGranted = false,
@@ -131,6 +134,7 @@ const LocationTab: React.FC<{
   onLocationPermissionChange,
   sharedInitialRegion,
   friends = [],
+  actionType = 'safeHome',
 }) => {
   const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -293,27 +297,44 @@ const LocationTab: React.FC<{
   const enableNotifications = async () => {
     try {
       setIsProcessing(true);
+      console.log('[HomeScreen] 🔄 Starting notification enable process...');
+
       let expoPushToken = pushToken;
+      console.log('[HomeScreen] Current push token:', expoPushToken ? expoPushToken.substring(0, 30) + '...' : 'null');
+
       if (!expoPushToken) {
+        console.log('[HomeScreen] No push token, requesting new one...');
         expoPushToken = await registerForPushNotifications();
         if (!expoPushToken) {
-          console.error('Failed to get push token');
+          console.error('[HomeScreen] ❌ Failed to get push token');
+          Alert.alert('Error', 'Failed to enable push notifications. Please check your device permissions.');
           setIsProcessing(false);
           return;
         }
+        console.log('[HomeScreen] ✅ New push token obtained:', expoPushToken.substring(0, 30) + '...');
         setPushToken(expoPushToken);
         await AsyncStorage.setItem('pushToken', expoPushToken);
       }
 
       if (token) {
+        console.log('[HomeScreen] Subscribing to push notifications on server...');
         const success = await subscribeToPushNotifications(expoPushToken, token);
         if (success) {
+          console.log('[HomeScreen] ✅ Successfully subscribed to push notifications');
           setIsNotified(true);
           await AsyncStorage.setItem('notificationState', 'true');
+          Alert.alert('Success', 'Push notifications enabled successfully!');
+        } else {
+          console.error('[HomeScreen] ❌ Failed to subscribe to push notifications');
+          Alert.alert('Error', 'Failed to enable push notifications. Please try again.');
         }
+      } else {
+        console.error('[HomeScreen] ❌ No auth token available for subscription');
+        Alert.alert('Error', 'Authentication required. Please log in again.');
       }
     } catch (error) {
-      console.error('Error enabling notifications:', error);
+      console.error('[HomeScreen] ❌ Error enabling notifications:', error);
+      Alert.alert('Error', 'Failed to enable push notifications. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -374,6 +395,7 @@ const LocationTab: React.FC<{
                 animValue={homeNotificationAnim}
                 onDismiss={() => onDismissNotification?.()}
                 topOffset={insets.top + 8 - 15}
+                actionType={actionType}
               />
             )}
 
@@ -450,6 +472,8 @@ export const HomeScreen: React.FC = () => {
   // Contact details state for showing ContactDetailsPanel
   const [showContactDetailsPanel, setShowContactDetailsPanel] = useState(false);
   const [contactDetailsFriend, setContactDetailsFriend] = useState<FriendWithDistance | null>(null);
+  
+  const lastQuickActionTime = useRef<number | null>(null);
   
   const handleFriendPress = (friend: FriendWithDistance) => {
     // Navigate map to friend location
@@ -641,6 +665,7 @@ export const HomeScreen: React.FC = () => {
     animValue: homeNotificationAnim,
     show: showHomeNotificationFn,
     dismiss: dismissHomeNotification,
+    actionType,
   } = useHomeNotification();
 
   // Sync SOS state when mode changes - only reset when exiting SOS mode
@@ -674,8 +699,25 @@ export const HomeScreen: React.FC = () => {
 
   // Home button handler - shows notification and sends to friends
   const handleHomePress = () => {
+    const statusType: HomeStatus = 'arrived';
     console.log('Home button pressed - showing notification and sending to friends');
-    showHomeNotificationFn();
+    
+    // Rate limiting: prevent sending any quick action more than once every 10 seconds (global cooldown)
+    const now = Date.now();
+    const lastTime = lastQuickActionTime.current;
+    const timeSinceLast = lastTime ? now - lastTime : Infinity;
+    
+    if (timeSinceLast < 10000) { // 10 seconds in milliseconds
+      const remainingTime = Math.ceil((10000 - timeSinceLast) / 1000);
+      
+      Alert.alert('Message Limit', `Please wait ${remainingTime} seconds before sending another message.`);
+      return;
+    }
+    
+    // Update the last sent time globally
+    lastQuickActionTime.current = now;
+    
+    showHomeNotificationFn(statusType);
     // Emit safe home event to all friends via WebSocket
     emitSafeHome('has arrived home safely');
   };
@@ -688,6 +730,18 @@ export const HomeScreen: React.FC = () => {
   // Handle sending home status messages
   const handleSendHomeStatus = (statusType: HomeStatus) => {
     console.log(`Sending home status: ${statusType}`);
+    
+    // Rate limiting: prevent sending any quick action more than once every 10 seconds (global cooldown)
+    const now = Date.now();
+    const lastTime = lastQuickActionTime.current;
+    const timeSinceLast = lastTime ? now - lastTime : Infinity;
+    
+    if (timeSinceLast < 10000) { // 10 seconds in milliseconds
+      const remainingTime = Math.ceil((10000 - timeSinceLast) / 1000);
+      
+      Alert.alert('Message Limit', `Please wait ${remainingTime} seconds before sending another message.`);
+      return;
+    }
     
     // Format message based on status type
     let message = '';
@@ -708,8 +762,14 @@ export const HomeScreen: React.FC = () => {
         message = statusType;
     }
     
-    // Emit safe home notification to friends via WebSocket
-    emitSafeHome(message);
+    // Update the last sent time globally
+    lastQuickActionTime.current = now;
+    
+    // Emit quick action message notification to friends via WebSocket
+    emitQuickActionMessage(message, statusType);
+    
+    // Show confirmation notification to the sender using HomeNotification system
+    showHomeNotificationFn(statusType);
   };
 
   // Toggle handlers - now using ToggleSwitch component which handles its own animation
@@ -859,9 +919,15 @@ export const HomeScreen: React.FC = () => {
   const setShowFriendRequestsRef = useRef<(show: boolean) => void>(setShowFriendRequests);
 
   const setupNotificationListeners = () => {
+    console.log('[HomeScreen] Setting up notification listeners...');
+
     return addNotificationListeners(
       (notification) => {
-        console.log('Notification received:', notification);
+        console.log('[HomeScreen] 📱 NOTIFICATION RECEIVED (foreground):', {
+          title: notification.request.content.title,
+          body: notification.request.content.body,
+          data: notification.request.content.data,
+        });
         
         // Handle friend request notifications
         const data = notification.request.content.data;
@@ -886,7 +952,11 @@ export const HomeScreen: React.FC = () => {
         }
       },
       (response) => {
-        console.log('Notification response:', response);
+        console.log('[HomeScreen] 👆 NOTIFICATION TAPPED:', {
+          title: response.notification.request.content.title,
+          body: response.notification.request.content.body,
+          data: response.notification.request.content.data,
+        });
         
         // Handle notification tap
         const data = response.notification.request.content.data;
@@ -1207,9 +1277,9 @@ export const HomeScreen: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'LOCATION': return (
-        <LocationTab 
-          showHomeNotification={homeNotificationVisible} 
-          homeNotificationAnim={homeNotificationAnim} 
+        <LocationTab
+          showHomeNotification={homeNotificationVisible}
+          homeNotificationAnim={homeNotificationAnim}
           onDismissNotification={handleDismissNotification}
           sharedUserLocation={sharedUserLocation}
           sharedLocationPermissionGranted={sharedLocationPermissionGranted}
@@ -1217,6 +1287,7 @@ export const HomeScreen: React.FC = () => {
           onLocationPermissionChange={setSharedLocationPermissionGranted}
           sharedInitialRegion={sharedInitialRegion}
           friends={friendsWithDistance}
+          actionType={actionType}
         />
       );
       case 'FRIENDS': return (
@@ -1253,9 +1324,9 @@ export const HomeScreen: React.FC = () => {
       );
       case 'PROFILE': return <ProfileTab />;
       default: return (
-        <LocationTab 
-          showHomeNotification={homeNotificationVisible} 
-          homeNotificationAnim={homeNotificationAnim} 
+        <LocationTab
+          showHomeNotification={homeNotificationVisible}
+          homeNotificationAnim={homeNotificationAnim}
           onDismissNotification={handleDismissNotification}
           sharedUserLocation={sharedUserLocation}
           sharedLocationPermissionGranted={sharedLocationPermissionGranted}
@@ -1263,6 +1334,7 @@ export const HomeScreen: React.FC = () => {
           onLocationPermissionChange={setSharedLocationPermissionGranted}
           sharedInitialRegion={sharedInitialRegion}
           friends={friendsWithDistance}
+          actionType={actionType}
         />
       );
     }
@@ -1281,7 +1353,7 @@ export const HomeScreen: React.FC = () => {
                     (action.key === 'SOS' && isSOSMode) ||
                     (action.key === 'LOCATION' && isLocationMode) ||
                     (action.key === 'MESSAGE' && isMessageMode) ||
-                    (action.key === 'HOME' && homeNotificationVisible);
+                    (action.key === 'HOME' && homeNotificationVisible && actionType === 'safeHome');
 
                   const handlePress = () => {
                     if (action.key === 'SOS') {
