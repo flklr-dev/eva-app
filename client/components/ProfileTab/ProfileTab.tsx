@@ -8,6 +8,7 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { updateProfile, deleteAccount, uploadProfilePicture } from '../../services/profileService';
+import HomeAddressModal from './HomeAddressModal';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 import PhoneInput from 'react-native-phone-number-input';
@@ -70,6 +71,7 @@ export const ProfileTab: React.FC = () => {
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
   const [selectedProfilePictureUri, setSelectedProfilePictureUri] = useState<string | null>(null);
+  const [homeAddressModalVisible, setHomeAddressModalVisible] = useState(false);
 
   // Debug log user data on mount and updates
   useEffect(() => {
@@ -423,9 +425,6 @@ export const ProfileTab: React.FC = () => {
     }
   };
 
-  const handleHomeSettings = () => {
-    navigation.navigate('ADD_TO_HOME');
-  };
 
   const handlePrivacySettings = () => {
     console.log('Privacy settings pressed');
@@ -453,6 +452,46 @@ export const ProfileTab: React.FC = () => {
 
   const handleDeleteAccount = () => {
     setDeleteModalVisible(true);
+  };
+
+  const handleSetHomeAddress = () => {
+    setHomeAddressModalVisible(true);
+  };
+
+  const handleSaveHomeAddress = async (homeAddress: { 
+    address: string; 
+    coordinates: { lat: number; lng: number };
+    details?: {
+      street: string;
+      city: string;
+      state: string;
+      country: string;
+      postalCode: string;
+    };
+  }) => {
+    try {
+      const updateData = {
+        homeAddress: {
+          address: homeAddress.address,
+          coordinates: homeAddress.coordinates,
+          details: homeAddress.details,
+        },
+      };
+      
+      const updatedUser = await updateProfile(updateData, token);
+      
+      // Update the user data in AuthContext for real-time UI updates
+      if (setUser && updatedUser) {
+        setUser(updatedUser);
+      }
+      
+      Alert.alert('Success', 'Home address updated successfully');
+    } catch (error) {
+      console.error('Failed to update home address:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update home address');
+    } finally {
+      setHomeAddressModalVisible(false);
+    }
   };
 
   const handleCloseDeleteModal = () => {
@@ -690,21 +729,28 @@ export const ProfileTab: React.FC = () => {
           </>
         )}
 
-        {/* Home Settings Container - Only show in view mode */}
+        {/* Home Address Container - Only show in view mode */}
         {!isEditMode && (
-          <TouchableOpacity style={styles.homeSettingsContainer} onPress={handleHomeSettings} activeOpacity={0.7}>
-            <View style={styles.homeSettingsLeft}>
+          <TouchableOpacity style={styles.homeAddressContainer} onPress={handleSetHomeAddress} activeOpacity={0.7}>
+            <View style={styles.homeAddressLeft}>
               <View style={styles.homeIconContainer}>
-                <MaterialCommunityIcons name="home-variant" size={20} color={COLORS.TEXT_PRIMARY} />
+                <MaterialCommunityIcons name="home" size={20} color={COLORS.TEXT_PRIMARY} />
               </View>
-              <View style={styles.homeSettingsTextContainer}>
-                <Text style={styles.homeSettingsTitle}>Add to your home</Text>
-                <Text style={styles.homeSettingsSubtitle}>Get notified when members come and go</Text>
+              <View style={styles.homeAddressTextContainer}>
+                <Text style={styles.homeAddressTitle}>Home Address</Text>
+                {user?.homeAddress ? (
+                  <Text style={styles.homeAddressSubtitle} numberOfLines={1}>
+                    {user.homeAddress.address}
+                  </Text>
+                ) : (
+                  <Text style={styles.homeAddressSubtitle}>Tap to set your home address</Text>
+                )}
               </View>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
           </TouchableOpacity>
         )}
+        
 
         {/* Privacy and Security Container - Only show in view mode */}
         {!isEditMode && (
@@ -830,6 +876,14 @@ export const ProfileTab: React.FC = () => {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      
+      {/* Home Address Modal */}
+      <HomeAddressModal
+        visible={homeAddressModalVisible}
+        onClose={() => setHomeAddressModalVisible(false)}
+        onSave={handleSaveHomeAddress}
+        currentAddress={user?.homeAddress || undefined}
+      />
     </View>
   );
 };
@@ -1033,6 +1087,38 @@ const styles = StyleSheet.create({
     borderColor: '#EBEBEB',
     padding: SPACING.MD,
     marginBottom: SPACING.MD,
+  },
+  homeAddressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.BACKGROUND_WHITE,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#EBEBEB',
+    padding: SPACING.MD,
+    marginBottom: SPACING.MD,
+  },
+  homeAddressLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: SPACING.MD,
+  },
+  homeAddressTextContainer: {
+    flex: 1,
+  },
+  homeAddressTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: 2,
+  },
+  homeAddressSubtitle: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: COLORS.TEXT_SECONDARY,
+    flexWrap: 'wrap',
   },
   homeSettingsLeft: {
     flexDirection: 'row',

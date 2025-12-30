@@ -37,6 +37,7 @@ interface MapViewProps {
     bottom?: number;
     left?: number;
   };
+  onRegionChange?: (region: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => void;
 }
 
 export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
@@ -49,13 +50,37 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
     userName = 'You',
     style,
     mapPadding,
+    onRegionChange,
   },
   ref
 ) => {
   const webViewRef = useRef<WebView>(null);
   
-  // Expose WebView ref to parent
-  React.useImperativeHandle(ref, () => webViewRef.current);
+  // Expose WebView ref and methods to parent
+  React.useImperativeHandle(ref, () => ({
+    webView: webViewRef.current,
+  setRegion: (region: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => {
+    if (webViewRef.current) {
+      const zoom = Math.round(Math.log(360 / region.longitudeDelta) / Math.LN2);
+      const script = `
+        (function() {
+          if (typeof map !== 'undefined' && map.setView) {
+            console.log('MapView: Setting view to', [${region.latitude}, ${region.longitude}], ${zoom});
+            map.setView([${region.latitude}, ${region.longitude}], ${zoom}, { animate: true });
+          } else {
+            console.log('MapView: Map not ready, retrying in 500ms');
+            setTimeout(() => {
+              if (typeof map !== 'undefined' && map.setView) {
+                map.setView([${region.latitude}, ${region.longitude}], ${zoom}, { animate: true });
+              }
+            }, 500);
+          }
+        })();
+      `;
+      webViewRef.current.injectJavaScript(script);
+    }
+  }
+  }));
 
   const generateMapHTML = () => {
     // Use user location if available, otherwise use initial region
@@ -114,8 +139,8 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
         .addTo(map)
         .bindPopup('Your Location');
       
-      // Focus on user location (default view for LocationTab)
-      map.setView(userPos, ${zoom});
+      // Focus on user location with appropriate zoom for home address selection
+      map.setView(userPos, 15);
     ` : '';
 
     return `
@@ -194,6 +219,24 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
               zoom: ${zoom},
               zoomControl: false,
               attributionControl: false
+            });
+            
+            // Handle map region changes
+            map.on('moveend', function() {
+              const center = map.getCenter();
+              const bounds = map.getBounds();
+              const region = {
+                latitude: center.lat,
+                longitude: center.lng,
+                latitudeDelta: Math.abs(bounds.getNorth() - bounds.getSouth()),
+                longitudeDelta: Math.abs(bounds.getEast() - bounds.getWest())
+              };
+              
+              // Post message to React Native
+              window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'regionChange',
+                region: region
+              }));
             });
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -289,8 +332,8 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
             .addTo(map)
             .bindPopup('Your Location');
           
-          // Pan to new location smoothly (no zoom change)
-          map.panTo(userPos, { animate: true, duration: 0.5 });
+          // Set view to new location with appropriate zoom
+          map.setView(userPos, 15, { animate: true, duration: 0.5 });
         })();
         true;
       `;
@@ -316,6 +359,16 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
         // Improve Android performance
         androidLayerType="hardware"
         mixedContentMode="always"
+        onMessage={(event) => {
+          try {
+            const data = JSON.parse(event.nativeEvent.data);
+            if (data.type === 'regionChange' && onRegionChange) {
+              onRegionChange(data.region);
+            }
+          } catch (error) {
+            console.warn('Error parsing WebView message:', error);
+          }
+        }}
       />
     </View>
   );

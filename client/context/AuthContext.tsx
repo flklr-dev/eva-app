@@ -9,6 +9,20 @@ interface User {
   phone?: string;
   countryCode?: string;
   profilePicture?: string;
+  homeAddress?: {
+    address: string;
+    coordinates: {
+      lat: number;
+      lng: number;
+    };
+    details?: {
+      street: string;
+      city: string;
+      state: string;
+      country: string;
+      postalCode: string;
+    };
+  };
 }
 
 interface PendingAuth {
@@ -65,6 +79,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               phone: fullProfile.phone,
               countryCode: fullProfile.countryCode,
               profilePicture: currentUser.profilePicture,
+              homeAddress: fullProfile.homeAddress,
             });
           } catch (profileError) {
             console.error('Failed to fetch full profile, using basic user data:', profileError);
@@ -112,6 +127,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           phone: fullProfile.phone,
           countryCode: fullProfile.countryCode,
           profilePicture: response.user.profilePicture,
+          homeAddress: fullProfile.homeAddress,
         });
       } catch (profileError) {
         console.error('Failed to fetch full profile after login, using basic user data:', profileError);
@@ -151,6 +167,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           phone: fullProfile.phone,
           countryCode: fullProfile.countryCode,
           profilePicture: response.user.profilePicture,
+          homeAddress: fullProfile.homeAddress,
         });
       } catch (profileError) {
         console.error('Failed to fetch full profile after registration, using basic user data:', profileError);

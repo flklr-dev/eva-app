@@ -38,6 +38,13 @@ export interface UserProfile {
       lat: number;
       lng: number;
     };
+    details?: {
+      street: string;
+      city: string;
+      state: string;
+      country: string;
+      postalCode: string;
+    };
   };
   isActive: boolean;
   lastSeen: Date;
@@ -53,6 +60,20 @@ export interface ProfileUpdateData {
     shareLocation?: boolean;
     shareWithEveryone?: boolean;
     notificationsEnabled?: boolean;
+  };
+  homeAddress?: {
+    address: string;
+    coordinates: {
+      lat: number;
+      lng: number;
+    };
+    details?: {
+      street: string;
+      city: string;
+      state: string;
+      country: string;
+      postalCode: string;
+    };
   };
 }
 

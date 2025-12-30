@@ -14,6 +14,13 @@ export interface IUser extends Document {
       lat: number;
       lng: number;
     };
+    details?: {
+      street: string;
+      city: string;
+      state: string;
+      country: string;
+      postalCode: string;
+    };
   };
   settings: {
     shareLocation: boolean;
@@ -89,6 +96,28 @@ const userSchema = new Schema<IUser>(
           required: function(this: IUser) {
             return this.homeAddress?.address !== undefined;
           },
+        },
+      },
+      details: {
+        street: {
+          type: String,
+          trim: true,
+        },
+        city: {
+          type: String,
+          trim: true,
+        },
+        state: {
+          type: String,
+          trim: true,
+        },
+        country: {
+          type: String,
+          trim: true,
+        },
+        postalCode: {
+          type: String,
+          trim: true,
         },
       },
     },

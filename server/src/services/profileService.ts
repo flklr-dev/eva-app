@@ -11,6 +11,20 @@ export interface ProfileUpdateData {
     shareWithEveryone?: boolean;
     notificationsEnabled?: boolean;
   };
+  homeAddress?: {
+    address: string;
+    coordinates: {
+      lat: number;
+      lng: number;
+    };
+    details?: {
+      street: string;
+      city: string;
+      state: string;
+      country: string;
+      postalCode: string;
+    };
+  };
 }
 
 export interface ProfileResponse {
@@ -30,6 +44,13 @@ export interface ProfileResponse {
     coordinates: {
       lat: number;
       lng: number;
+    };
+    details?: {
+      street: string;
+      city: string;
+      state: string;
+      country: string;
+      postalCode: string;
     };
   };
   isActive: boolean;
@@ -98,6 +119,16 @@ export const updateUserProfile = async (
     }
     if (updateData.settings.notificationsEnabled !== undefined) {
       updateObj['settings.notificationsEnabled'] = updateData.settings.notificationsEnabled;
+    }
+  }
+
+  // Handle home address update
+  if (updateData.homeAddress !== undefined) {
+    if (updateData.homeAddress === null) {
+      // If null is passed, remove the home address
+      updateObj.homeAddress = undefined;
+    } else {
+      updateObj.homeAddress = updateData.homeAddress;
     }
   }
 
