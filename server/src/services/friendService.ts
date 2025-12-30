@@ -194,6 +194,21 @@ export const sendFriendRequest = async (requesterId: string, recipientId: string
   }
   console.log('[FriendService] =============================================');
 
+  // Create activity for friend request sent
+  try {
+    const { createActivity } = require('./activityService');
+    await createActivity({
+      userId: requesterId,
+      type: 'status_change',
+      message: `You sent a friend request to ${recipient.name}`,
+      visibleTo: [requesterId], // Only visible to sender
+    });
+    console.log('[FriendService] Activity created for friend request sent');
+  } catch (activityError) {
+    console.error('[FriendService] Error creating activity for friend request:', activityError);
+    // Don't fail the request if activity creation fails
+  }
+
   return savedRequest;
 };
 
@@ -274,6 +289,36 @@ export const respondToFriendRequest = async (
 
   friendRequest.status = action === 'accept' ? 'accepted' : 'rejected';
   const updatedRequest = await friendRequest.save();
+
+  // Create activities for friend request response
+  try {
+    const { createActivity } = require('./activityService');
+    const requester = await User.findById(friendRequest.requesterId).select('name');
+    const responder = await User.findById(userId).select('name');
+    
+    if (action === 'accept') {
+      // Create activity for requester
+      await createActivity({
+        userId: friendRequest.requesterId.toString(),
+        type: 'status_change',
+        message: `${responder?.name || 'Someone'} accepted your friend request`,
+        visibleTo: [friendRequest.requesterId.toString()],
+      });
+      
+      // Create activity for responder
+      await createActivity({
+        userId: userId.toString(),
+        type: 'status_change',
+        message: `You accepted ${requester?.name || 'someone'}'s friend request`,
+        visibleTo: [userId.toString()],
+      });
+      console.log('[FriendService] Activities created for friend request acceptance');
+    }
+    // Note: We don't create activities for rejections per plan requirements
+  } catch (activityError) {
+    console.error('[FriendService] Error creating activities for friend request response:', activityError);
+    // Don't fail the request if activity creation fails
+  }
 
   // Emit WebSocket event to notify requester
   try {

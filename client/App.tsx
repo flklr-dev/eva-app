@@ -13,6 +13,7 @@ import { SafeHomeNotificationProvider } from './context/SafeHomeNotificationCont
 import { SafeHomeNotification } from './components/SafeHomeNotification';
 import { QuickActionNotificationProvider } from './context/QuickActionNotificationContext';
 import { QuickActionNotification } from './components/QuickActionNotification';
+import { ActivityProvider } from './context/ActivityContext';
 
 /**
  * Safe Home Tracker Initializer
@@ -253,19 +254,21 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <QuickActionNotificationProvider>
-          <SafeHomeNotificationProvider>
-            <GlobalNotificationProvider>
-              <SafeHomeTrackerInitializer />
-              <DeepLinkHandler />
-              <StatusBar style="dark" />
-              <GlobalFriendRequestNotification />
-              <SafeHomeNotification />
-              <QuickActionNotification />
-              <AppNavigator />
-            </GlobalNotificationProvider>
-          </SafeHomeNotificationProvider>
-        </QuickActionNotificationProvider>
+        <ActivityProvider>
+          <QuickActionNotificationProvider>
+            <SafeHomeNotificationProvider>
+              <GlobalNotificationProvider>
+                <SafeHomeTrackerInitializer />
+                <DeepLinkHandler />
+                <StatusBar style="dark" />
+                <GlobalFriendRequestNotification />
+                <SafeHomeNotification />
+                <QuickActionNotification />
+                <AppNavigator />
+              </GlobalNotificationProvider>
+            </SafeHomeNotificationProvider>
+          </QuickActionNotificationProvider>
+        </ActivityProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

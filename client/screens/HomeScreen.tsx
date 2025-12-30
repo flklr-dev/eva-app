@@ -39,6 +39,7 @@ import { DeviceTab } from '../components/DeviceTab';
 import { ProfileTab } from '../components/ProfileTab';
 import { Friend, FriendWithDistance } from '../types/friends';
 import { Activity } from '../types/activity';
+import { useActivity } from '../context/ActivityContext';
 import { calculateDistance } from '../utils/distanceCalculator';
 import { shareFriendInvite } from '../utils/shareUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
@@ -69,45 +70,7 @@ const PlaceholderTab: React.FC<{ name: string }> = ({ name }) => (
 // Mock friend data - Located near Mati City, Davao Oriental
 // Mock friends removed - now using real API data
 
-// Mock activity data
-const mockActivities: Activity[] = [
-  {
-    id: 'activity-1',
-    userId: 'friend-1',
-    userName: 'Emma',
-    message: 'Message: Walking Alone',
-    timeAgo: '5hr',
-    location: 'Downtown',
-    timestamp: new Date(),
-  },
-  {
-    id: 'activity-2',
-    userId: 'user',
-    userName: 'You',
-    message: 'You send Arrived Home to your contacts',
-    timeAgo: '2hr',
-    location: 'Home',
-    timestamp: new Date(),
-  },
-  {
-    id: 'activity-3',
-    userId: 'friend-2',
-    userName: 'Lucas',
-    message: 'Message: Walking Alone',
-    timeAgo: '1hr',
-    location: 'Downtown',
-    timestamp: new Date(),
-  },
-  {
-    id: 'activity-4',
-    userId: 'friend-3',
-    userName: 'Maya',
-    message: 'You send Arrived Home to your contacts',
-    timeAgo: '30min',
-    location: 'Home',
-    timestamp: new Date(),
-  },
-];
+// Mock activity data removed - now using ActivityContext
 
 // Friend markers will be generated from friendsWithDistance state
 
@@ -432,6 +395,7 @@ export const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState('LOCATION');
   const insets = useSafeAreaInsets();
   const { token, user } = useAuth();
+  const { activities, refreshActivities } = useActivity();
   const websocketInitializedRef = useRef(false);
   
   // Shared user location state - used by all tabs for consistent map view
@@ -720,6 +684,10 @@ export const HomeScreen: React.FC = () => {
     showHomeNotificationFn(statusType);
     // Emit safe home event to all friends via WebSocket
     emitSafeHome('has arrived home safely');
+    // Refresh activities after a short delay to allow server to create activity
+    setTimeout(() => {
+      refreshActivities();
+    }, 1000);
   };
 
   // Dismiss notification callback
@@ -770,6 +738,11 @@ export const HomeScreen: React.FC = () => {
     
     // Show confirmation notification to the sender using HomeNotification system
     showHomeNotificationFn(statusType);
+    
+    // Refresh activities after a short delay to allow server to create activity
+    setTimeout(() => {
+      refreshActivities();
+    }, 1000);
   };
 
   // Toggle handlers - now using ToggleSwitch component which handles its own animation
@@ -1439,7 +1412,7 @@ export const HomeScreen: React.FC = () => {
              {/* Activity List Panel - Shown when Activity tab is active */}
              {activeTab === 'ACTIVITY' && (
                <ActivityListPanel
-                 activities={mockActivities}
+                 activities={activities}
                  onActivityPress={(activity) => console.log('Activity pressed:', activity)}
                />
              )}

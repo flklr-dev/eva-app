@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { NotificationSubscription } from '../models/NotificationSubscription';
 import User from '../models/User';
 import Friend from '../models/Friend';
+import * as activityService from '../services/activityService';
 
 // Subscribe to notifications
 export const subscribe = async (req: Request, res: Response) => {
@@ -306,6 +307,40 @@ export const sendSafeHomeNotificationToFriends = async (req: Request, res: Respo
     const result = await response.json();
 
     console.log('[SafeHomeNotification] Notifications sent:', messages.length);
+
+    // Create activity for safe home arrival
+    try {
+      const homeAddress = user.homeAddress;
+      
+      // Extract city from home address
+      let cityName = 'home';
+      if (homeAddress?.details?.city) {
+        cityName = homeAddress.details.city;
+      } else if (homeAddress?.address) {
+        const parts = homeAddress.address.split(',').map(p => p.trim());
+        if (parts.length >= 2) {
+          cityName = parts[1];
+        }
+      }
+      
+      await activityService.createActivity({
+        userId: userId.toString(),
+        type: 'home_arrival',
+        message: `${user.name} sent safe home`,
+        location: homeAddress ? {
+          name: cityName,
+          coordinates: {
+            lat: homeAddress.coordinates.lat,
+            lng: homeAddress.coordinates.lng,
+          },
+        } : undefined,
+        visibleTo: [userId.toString(), ...friendIds.map(id => id.toString())],
+      });
+      console.log('[SafeHomeNotification] Activity created for safe home arrival');
+    } catch (activityError) {
+      console.error('[SafeHomeNotification] Error creating activity:', activityError);
+      // Don't fail the request if activity creation fails
+    }
 
     res.status(200).json({
       message: `Safe home notification sent to ${messages.length} friends`,

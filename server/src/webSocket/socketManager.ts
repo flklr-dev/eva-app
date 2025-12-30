@@ -4,6 +4,7 @@ import { JWT_SECRET } from '../config/jwt';
 import User from '../models/User';
 import Friend from '../models/Friend';
 import { sendPushNotificationToUser } from '../services/notificationService';
+import * as activityService from '../services/activityService';
 
 // Store connected users with socket instances
 interface ConnectedUser {
@@ -196,10 +197,48 @@ export const initializeWebSocket = (io: Server): void => {
         const friendIds = friendRecords.map((friend: any) => {
           const requesterId = friend.requesterId.toString();
           const recipientId = friend.recipientId.toString();
-          return requesterId === userId ? recipientId : requesterId;
+          return requesterId === userId.toString() ? recipientId : requesterId;
         });
         
         console.log(`[WebSocket] Broadcasting safe home to ${friendIds.length} friends:`, friendIds);
+
+        // Create activity for safe home arrival
+        try {
+          // Get user's home address
+          const userWithAddress = await User.findById(userId).select('name homeAddress');
+          const homeAddress = userWithAddress?.homeAddress;
+          
+          // Extract city from home address details or parse from full address
+          let cityName = 'home';
+          if (homeAddress?.details?.city) {
+            cityName = homeAddress.details.city;
+          } else if (homeAddress?.address) {
+            // Try to extract city from full address (format: "Street, City, State, Postal, Country")
+            const parts = homeAddress.address.split(',').map(p => p.trim());
+            if (parts.length >= 2) {
+              cityName = parts[1]; // Second part is usually the city
+            }
+          }
+          
+          // Include sender in visibleTo so they can see their own activity
+          await activityService.createActivity({
+            userId: userId.toString(),
+            type: 'home_arrival',
+            message: `${sender.name} sent safe home`,
+            location: homeAddress ? {
+              name: cityName,
+              coordinates: {
+                lat: homeAddress.coordinates.lat,
+                lng: homeAddress.coordinates.lng,
+              },
+            } : undefined,
+            visibleTo: [userId.toString(), ...friendIds],
+          });
+          console.log('[WebSocket] Activity created for safe home arrival');
+        } catch (activityError) {
+          console.error('[WebSocket] Error creating activity for safe home:', activityError);
+          // Don't fail the operation if activity creation fails
+        }
 
         // Send push notifications for safety messages - reliable delivery
         for (const friendId of friendIds) {
@@ -232,8 +271,8 @@ export const initializeWebSocket = (io: Server): void => {
       try {
         console.log(`[WebSocket] Quick action message from ${userId} with type: ${data.type} and message: ${data.message}`);
 
-        // Get sender info
-        const sender = await User.findById(userId).select('name email profilePicture');
+        // Get sender info with location
+        const sender = await User.findById(userId).select('name email profilePicture lastKnownLocation');
         if (!sender) {
           console.error('[WebSocket] Sender not found:', userId);
           return;
@@ -257,10 +296,73 @@ export const initializeWebSocket = (io: Server): void => {
         const friendIds = friendRecords.map((friend: any) => {
           const requesterId = friend.requesterId.toString();
           const recipientId = friend.recipientId.toString();
-          return requesterId === userId ? recipientId : requesterId;
+          return requesterId === userId.toString() ? recipientId : requesterId;
         });
 
         console.log(`[WebSocket] Broadcasting quick action message to ${friendIds.length} friends:`, friendIds);
+
+        // Create activity for quick action message
+        try {
+          // Get location from user's last known location
+          let location = undefined;
+          if (sender.lastKnownLocation?.coordinates) {
+            const lat = sender.lastKnownLocation.coordinates.lat;
+            const lng = sender.lastKnownLocation.coordinates.lng;
+            
+            // Reverse geocode to get city name
+            let locationName = `${lat.toFixed(4)}, ${lng.toFixed(4)}`; // Fallback to coordinates
+            
+            try {
+              const geocodeUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`;
+              const geocodeResponse = await fetch(geocodeUrl, {
+                headers: {
+                  'User-Agent': 'EVA-Alert-App/1.0'
+                }
+              });
+              
+              if (geocodeResponse.ok) {
+                const geocodeData: any = await geocodeResponse.json();
+                const address = geocodeData.address || {};
+                
+                // Build location string: City, State/Region (if available)
+                const city = address.city || address.town || address.village || address.municipality;
+                const state = address.state || address.province || address.region;
+                
+                if (city && state) {
+                  locationName = `${city}, ${state}`;
+                } else if (city) {
+                  locationName = city;
+                } else if (state) {
+                  locationName = state;
+                }
+                
+                console.log('[WebSocket] Reverse geocoded location:', locationName);
+              }
+            } catch (geocodeError) {
+              console.error('[WebSocket] Reverse geocoding error:', geocodeError);
+              // Continue with coordinate fallback
+            }
+            
+            location = {
+              name: locationName,
+              coordinates: { lat, lng },
+            };
+          }
+
+          // Include sender in visibleTo so they can see their own activity
+          await activityService.createActivity({
+            userId: userId.toString(),
+            type: 'message',
+            message: `${sender.name} ${data.message}`,
+            location,
+            metadata: { quickActionType: data.type },
+            visibleTo: [userId.toString(), ...friendIds],
+          });
+          console.log('[WebSocket] Activity created for quick action message with location:', location ? 'yes' : 'no');
+        } catch (activityError) {
+          console.error('[WebSocket] Error creating activity for quick action:', activityError);
+          // Don't fail the operation if activity creation fails
+        }
 
         // Send push notifications for safety messages - reliable delivery
         for (const friendId of friendIds) {

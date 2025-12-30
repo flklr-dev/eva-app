@@ -226,7 +226,9 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
         })();
         true;
       `;
-      mapRef.current.injectJavaScript(script);
+      if (mapRef.current?.webView) {
+        mapRef.current.webView.injectJavaScript(script);
+      }
     }
   }, [userLocation]);
   
@@ -293,7 +295,9 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
           })();
           true;
         `;
-        mapRef.current?.injectJavaScript(script);
+        if (mapRef.current?.webView) {
+          mapRef.current.webView.injectJavaScript(script);
+        }
       };
       
       // Fetch actual route from OSRM (don't draw straight line as fallback initially)
@@ -364,7 +368,9 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
         })();
         true;
       `;
-      mapRef.current.injectJavaScript(script);
+      if (mapRef.current?.webView) {
+        mapRef.current.webView.injectJavaScript(script);
+      }
     }
   }, []);
   
@@ -447,7 +453,9 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
         })();
         true;
       `;
-      mapRef.current.injectJavaScript(script);
+      if (mapRef.current?.webView) {
+        mapRef.current.webView.injectJavaScript(script);
+      }
     }
   }, []);
   

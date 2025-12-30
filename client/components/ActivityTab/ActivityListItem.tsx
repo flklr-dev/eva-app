@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '../../constants/theme';
 import { Activity } from '../../types/activity';
+import { getActivityIcon } from '../../services/activityService';
+import { useAuth } from '../../context/AuthContext';
 
 interface ActivityListItemProps {
   activity: Activity;
@@ -16,6 +18,27 @@ export const ActivityListItem: React.FC<ActivityListItemProps> = ({
   activity,
   onPress,
 }) => {
+  const { user } = useAuth();
+  const isCurrentUser = user?.id === activity.userId;
+  const displayName = isCurrentUser ? 'You' : activity.userName;
+  
+  // Replace user's name with "You" in the message content if it's the current user
+  let displayMessage = activity.message;
+  if (isCurrentUser && activity.userName) {
+    // Replace the user's name at the start of the message with "You"
+    displayMessage = displayMessage.replace(new RegExp(`^${activity.userName}\\s+`, 'i'), 'You ');
+    
+    // Fix grammar: "You has" -> "You have", "You is" -> "You are", etc.
+    displayMessage = displayMessage.replace(/^You has\s+/, 'You have ');
+    displayMessage = displayMessage.replace(/^You is\s+/, 'You are ');
+    displayMessage = displayMessage.replace(/^You was\s+/, 'You were ');
+    
+    // For "sent safe home" message, change to proper format
+    if (displayMessage.includes('sent safe home')) {
+      displayMessage = 'You sent safe home to your friends';
+    }
+  }
+  
   const initials = activity.userName
     .split(' ')
     .map(n => n[0])
@@ -28,10 +51,10 @@ export const ActivityListItem: React.FC<ActivityListItemProps> = ({
       {/* Profile Picture or Initials */}
       <View style={styles.profileContainer}>
         {activity.profilePicture ? (
-          <View style={styles.profileImageContainer}>
-            {/* In a real app, you'd use Image component here */}
-            <Text style={styles.profileImagePlaceholder}>IMG</Text>
-          </View>
+          <Image
+            source={{ uri: activity.profilePicture }}
+            style={styles.profileImage}
+          />
         ) : (
           <View style={styles.profileInitialsContainer}>
             <Text style={styles.profileInitials}>{initials}</Text>
@@ -41,20 +64,22 @@ export const ActivityListItem: React.FC<ActivityListItemProps> = ({
 
       {/* Name and Activity Info */}
       <View style={styles.activityInfo}>
-        <Text style={styles.userName}>{activity.userName}</Text>
+        <Text style={styles.userName}>{displayName}</Text>
         <View style={styles.messageContainer}>
-          <MaterialCommunityIcons name="message-text-outline" size={14} color={COLORS.TEXT_SECONDARY} />
-          <Text style={styles.message}>{activity.message}</Text>
+          <MaterialCommunityIcons name={getActivityIcon(activity.type)} size={14} color={COLORS.TEXT_SECONDARY} />
+          <Text style={styles.message}>{displayMessage}</Text>
         </View>
         <View style={styles.metaContainer}>
           <View style={styles.metaItem}>
             <MaterialCommunityIcons name="clock-outline" size={14} color={COLORS.TEXT_SECONDARY} />
             <Text style={styles.metaText}>{activity.timeAgo}</Text>
           </View>
-          <View style={styles.metaItem}>
-            <MaterialCommunityIcons name="map-marker-outline" size={14} color={COLORS.TEXT_SECONDARY} />
-            <Text style={styles.metaText}>{activity.location}</Text>
-          </View>
+          {activity.location && activity.location !== 'Unknown location' && activity.location !== '' && (
+            <View style={styles.metaItem}>
+              <MaterialCommunityIcons name="map-marker-outline" size={14} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.metaText}>{activity.location}</Text>
+            </View>
+          )}
         </View>
       </View>
     </>
@@ -82,18 +107,11 @@ const styles = StyleSheet.create({
   profileContainer: {
     marginRight: SPACING.MD,
   },
-  profileImageContainer: {
+  profileImage: {
     width: 48,
     height: 48,
     borderRadius: 24,
     backgroundColor: COLORS.BACKGROUND_GRAY,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  profileImagePlaceholder: {
-    fontSize: 10,
-    color: COLORS.TEXT_SECONDARY,
   },
   profileInitialsContainer: {
     width: 48,

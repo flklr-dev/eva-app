@@ -1,3 +1,4 @@
 export { SafeHomeNotificationProvider, useSafeHomeNotifications, showGlobalSafeHomeNotification, dismissGlobalSafeHomeNotification } from './SafeHomeNotificationContext';
 export { GlobalNotificationProvider, useGlobalNotifications, showGlobalFriendRequestNotification, dismissGlobalFriendRequestNotification } from './GlobalNotificationContext';
 export { QuickActionNotificationProvider, useQuickActionNotifications, showGlobalQuickActionNotification, dismissGlobalQuickActionNotification } from './QuickActionNotificationContext';
+export { ActivityProvider, useActivity } from './ActivityContext';

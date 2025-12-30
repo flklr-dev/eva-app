@@ -16,6 +16,9 @@ let isConnecting = false;
 const friendRequestReceivedCallbacks: Set<() => void> = new Set();
 const friendRequestRespondedCallbacks: Set<() => void> = new Set();
 
+// Callbacks for activity refresh events
+const activityRefreshCallbacks: Set<() => void> = new Set();
+
 // Event types
 export type WebSocketEvent = 
   | 'friend_request_sent'
@@ -200,6 +203,15 @@ const handleFriendRequestReceived = async (data: FriendRequestEventData) => {
         console.error('[WebSocket] Error in friend request callback:', e);
       }
     });
+
+    // Trigger activity refresh callbacks
+    activityRefreshCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (e) {
+        console.error('[WebSocket] Error in activity refresh callback:', e);
+      }
+    });
   } catch (error) {
     console.error('[WebSocket] Error handling friend request:', error);
   }
@@ -233,6 +245,15 @@ const handleFriendRequestAccepted = async (data: FriendRequestResponseEventData)
         callback();
       } catch (e) {
         console.error('[WebSocket] Error in friend response callback:', e);
+      }
+    });
+
+    // Trigger activity refresh callbacks
+    activityRefreshCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (e) {
+        console.error('[WebSocket] Error in activity refresh callback:', e);
       }
     });
   } catch (error) {
@@ -308,6 +329,15 @@ const handleFriendSafeHome = async (data: { userId: string; userName: string; me
     } catch (notifError) {
       console.error('[WebSocket] Error showing safe home notification:', notifError);
     }
+
+    // Trigger activity refresh callbacks
+    activityRefreshCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (e) {
+        console.error('[WebSocket] Error in activity refresh callback:', e);
+      }
+    });
   } catch (error) {
     console.error('[WebSocket] Error handling friend safe home:', error);
   }
@@ -332,6 +362,15 @@ const handleFriendQuickActionMessage = async (data: { userId: string; userName: 
     } catch (notifError) {
       console.error('[WebSocket] Error showing quick action notification:', notifError);
     }
+
+    // Trigger activity refresh callbacks
+    activityRefreshCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (e) {
+        console.error('[WebSocket] Error in activity refresh callback:', e);
+      }
+    });
 
     console.log('[WebSocket] Message notification processed');
   } catch (error) {
@@ -417,6 +456,18 @@ export const setOnFriendRequestResponded = (callback: () => void): (() => void) 
   return () => {
     friendRequestRespondedCallbacks.delete(callback);
     console.log('[WebSocket] Friend request responded callback removed, total:', friendRequestRespondedCallbacks.size);
+  };
+};
+
+// Register callback for activity refresh events
+export const setOnActivityRefresh = (callback: () => void): (() => void) => {
+  activityRefreshCallbacks.add(callback);
+  console.log('[WebSocket] Activity refresh callback registered, total:', activityRefreshCallbacks.size);
+  
+  // Return cleanup function
+  return () => {
+    activityRefreshCallbacks.delete(callback);
+    console.log('[WebSocket] Activity refresh callback removed, total:', activityRefreshCallbacks.size);
   };
 };
 
