@@ -68,7 +68,7 @@ export const AddressDetailsModal: React.FC<AddressDetailsModalProps> = ({
   React.useEffect(() => {
     if (initialAddress.address) {
       const parts = initialAddress.address.split(',').map(part => part.trim());
-
+      
       // Only log once per unique address to avoid spam
       const addressKey = `${initialAddress.address}-${initialAddress.postalCode || ''}`;
       if (addressKey === lastParsedAddressRef.current) {
@@ -101,7 +101,7 @@ export const AddressDetailsModal: React.FC<AddressDetailsModalProps> = ({
       let state = '';
       let postalCode = initialAddress.postalCode || '';
       let country = '';
-
+      
       if (validParts.length === 0) {
         // No valid parts, leave everything empty
       } else if (validParts.length === 1) {
@@ -138,7 +138,7 @@ export const AddressDetailsModal: React.FC<AddressDetailsModalProps> = ({
         country,
         postalCode
       });
-
+      
       setAddressDetails({
         street,
         city,

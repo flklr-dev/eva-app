@@ -61,17 +61,36 @@ export const FriendsTab = React.forwardRef<FriendsTabRef, FriendsTabProps>((
   const locationPermissionGranted = sharedLocationPermissionGranted;
 
   // Calculate distances and find nearest friend
+  // If userLocation is not available, keep friends but mark distance as NaN (will show "Unknown")
   const friendsWithDistance = useMemo(() => {
-    if (!userLocation) return [];
-    return friends.map(friend => ({
-      ...friend,
-      distance: calculateDistance(
-        userLocation.latitude,
-        userLocation.longitude,
-        friend.coordinate.latitude,
-        friend.coordinate.longitude
-      ),
-    }));
+    if (!userLocation) {
+      // Return friends with NaN distance instead of empty array
+      return friends.map(friend => ({
+        ...friend,
+        distance: NaN,
+      }));
+    }
+    
+    return friends.map(friend => {
+      // Check if friend has valid coordinates
+      const hasValidCoordinates = friend.coordinate && 
+                                  friend.coordinate.latitude !== 0 && 
+                                  friend.coordinate.longitude !== 0;
+      
+      if (!hasValidCoordinates) {
+        return { ...friend, distance: NaN };
+      }
+
+      return {
+        ...friend,
+        distance: calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          friend.coordinate.latitude,
+          friend.coordinate.longitude
+        ),
+      };
+    });
   }, [friends, userLocation]);
 
   // Calculate online friends count

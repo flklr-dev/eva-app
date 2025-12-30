@@ -1048,6 +1048,48 @@ export const HomeScreen: React.FC = () => {
     }
   }, [user?.id, token]);
 
+  /**
+   * Helper function to recalculate distances for existing friends
+   * This is used when user location becomes available or updates
+   * IMPORTANT: This function should use the original lastKnownLocation data if available,
+   * not just the stored coordinate (which might be {0,0} if it was set before location was available)
+   */
+  const recalculateDistances = useCallback((friends: FriendWithDistance[]): FriendWithDistance[] => {
+    if (!sharedUserLocation) {
+      console.log('[Friends] Cannot recalculate distances: sharedUserLocation is not available');
+      // If no user location, return friends with NaN distances
+      return friends.map(friend => ({
+        ...friend,
+        distance: NaN,
+      }));
+    }
+
+    console.log('[Friends] Recalculating distances for', friends.length, 'friends');
+    
+    return friends.map(friend => {
+      // Check if friend has valid coordinates (not 0,0 which is the default)
+      const hasValidCoordinates = friend.coordinate && 
+                                  friend.coordinate.latitude !== 0 && 
+                                  friend.coordinate.longitude !== 0;
+      
+      if (!hasValidCoordinates) {
+        console.log(`[Friends] Friend ${friend.name} has invalid coordinates:`, friend.coordinate);
+        return { ...friend, distance: NaN };
+      }
+
+      // Calculate distance
+      const distance = calculateDistance(
+        sharedUserLocation.latitude,
+        sharedUserLocation.longitude,
+        friend.coordinate.latitude,
+        friend.coordinate.longitude
+      );
+
+      console.log(`[Friends] Recalculated distance for ${friend.name}:`, distance, 'km');
+      return { ...friend, distance };
+    });
+  }, [sharedUserLocation]);
+
   // Load friends list from API
   const loadFriends = useCallback(async (forceRefresh = false) => {
     if (!user || !token) {
@@ -1085,12 +1127,23 @@ export const HomeScreen: React.FC = () => {
           const hasLastKnownLocation = !!friend.lastKnownLocation?.coordinates?.lat && 
                                       !!friend.lastKnownLocation?.coordinates?.lng;
           
+          console.log(`[Friends] Processing friend ${friend.name}:`, {
+            hasLastKnownLocation,
+            lastKnownLocation: friend.lastKnownLocation,
+            isOnline: friend.isOnline,
+            hasSharedUserLocation: !!sharedUserLocation,
+          });
+          
           const friendLocation = hasLastKnownLocation
             ? { 
                 latitude: friend.lastKnownLocation!.coordinates.lat, 
                 longitude: friend.lastKnownLocation!.coordinates.lng 
               }
             : null;
+          
+          // ALWAYS store the coordinate from lastKnownLocation if available (even if user location isn't available yet)
+          // This ensures we can calculate distance later when user location becomes available
+          const coordinate = friendLocation || { latitude: 0, longitude: 0 };
           
           // Calculate distance only if both user and friend have location data
           let distance = NaN;
@@ -1101,6 +1154,12 @@ export const HomeScreen: React.FC = () => {
               friendLocation.latitude,
               friendLocation.longitude
             );
+            console.log(`[Friends] Calculated distance for ${friend.name}:`, distance, 'km');
+          } else {
+            console.log(`[Friends] Cannot calculate distance for ${friend.name}:`, {
+              hasSharedUserLocation: !!sharedUserLocation,
+              hasFriendLocation: !!friendLocation,
+            });
           }
           
           // Get human-readable location name using reverse geocoding
@@ -1130,7 +1189,7 @@ export const HomeScreen: React.FC = () => {
             country: locationDisplay,
             // Use isOnline from server if available, otherwise fall back to isActive for backward compatibility
             status: friend.isOnline ? 'online' : 'offline',
-            coordinate: friendLocation || { latitude: 0, longitude: 0 }, // Default for mapping (won't be shown on map)
+            coordinate: coordinate, // Always store coordinate from lastKnownLocation if available
             distance: distance,
           };
         })
@@ -1240,6 +1299,57 @@ export const HomeScreen: React.FC = () => {
 
     return () => clearInterval(requestsInterval);
   }, [activeTab, user?.id, token]); // Restart when tab changes or user/token changes
+
+  // Recalculate distances when user location becomes available or updates
+  // Use a ref to track friends to avoid dependency issues
+  const friendsWithDistanceRef = useRef(friendsWithDistance);
+  useEffect(() => {
+    friendsWithDistanceRef.current = friendsWithDistance;
+  }, [friendsWithDistance]);
+
+  useEffect(() => {
+    const currentFriends = friendsWithDistanceRef.current;
+    
+    if (currentFriends.length === 0) {
+      console.log('[Friends] No friends to recalculate distances for');
+      return; // No friends to recalculate
+    }
+
+    // Only recalculate if we have a valid location
+    if (!sharedUserLocation) {
+      console.log('[Friends] Cannot recalculate: sharedUserLocation is null');
+      return;
+    }
+
+    console.log('[Friends] Recalculating distances due to location update', {
+      friendsCount: currentFriends.length,
+      userLocation: sharedUserLocation,
+    });
+    
+    const updatedFriends = recalculateDistances(currentFriends);
+    
+    // Only update if distances actually changed (avoid unnecessary re-renders)
+    const hasChanged = updatedFriends.some((friend, index) => {
+      const oldDistance = currentFriends[index]?.distance;
+      const newDistance = friend.distance;
+      // Check if distance changed from NaN to a number, or if the value changed significantly
+      const changed = (isNaN(oldDistance) && !isNaN(newDistance)) || 
+             (!isNaN(oldDistance) && !isNaN(newDistance) && Math.abs(oldDistance - newDistance) > 0.01);
+      
+      if (changed) {
+        console.log(`[Friends] Distance changed for ${friend.name}:`, oldDistance, '->', newDistance);
+      }
+      
+      return changed;
+    });
+
+    if (hasChanged) {
+      console.log('[Friends] Updating friends with recalculated distances');
+      setFriendsWithDistance(updatedFriends);
+    } else {
+      console.log('[Friends] No distance changes detected, skipping update');
+    }
+  }, [sharedUserLocation, recalculateDistances]); // Recalculate when location changes
 
   // Refresh friends list when a request is accepted
   const handleRequestAccepted = useCallback(() => {

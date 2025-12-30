@@ -82,8 +82,8 @@ export const HomeAddressModal: React.FC<HomeAddressModalProps> = ({
       return {
         latitude: 14.5995, // Manila as temporary default
         longitude: 120.9842,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
       };
     }
   });
@@ -159,7 +159,7 @@ export const HomeAddressModal: React.FC<HomeAddressModalProps> = ({
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
-
+      
       console.log('HomeAddressModal: Got current location:', location.coords);
 
       const newRegion = {
@@ -172,10 +172,10 @@ export const HomeAddressModal: React.FC<HomeAddressModalProps> = ({
       setCurrentRegion(newRegion);
       // Update initialRegion so MapView renders with correct location
       setInitialRegion(newRegion);
-
+      
       // For immediate geocoding of current location, call it directly without debouncing
       reverseGeocodeLocationImmediate(location.coords.latitude, location.coords.longitude);
-
+      
       // Mark map as ready - it will render with the correct initialRegion
       setMapReady(true);
     } catch (error) {
@@ -193,7 +193,7 @@ export const HomeAddressModal: React.FC<HomeAddressModalProps> = ({
         latitude,
         longitude,
       });
-
+      
       if (geocodeResult && geocodeResult.length > 0) {
         const result = geocodeResult[0];
         console.log('Geocoding result:', result);
@@ -300,8 +300,8 @@ export const HomeAddressModal: React.FC<HomeAddressModalProps> = ({
     setShowAddressDetailsModal(true);
   };
   
-  const handleAddressDetailsSave = (addressWithDetails: {
-    address: string;
+  const handleAddressDetailsSave = (addressWithDetails: { 
+    address: string; 
     coordinates: { lat: number; lng: number };
     details: {
       street: string;
