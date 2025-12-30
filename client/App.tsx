@@ -15,6 +15,58 @@ import { QuickActionNotificationProvider } from './context/QuickActionNotificati
 import { QuickActionNotification } from './components/QuickActionNotification';
 
 /**
+ * Safe Home Tracker Initializer
+ * Starts safe home tracking when user has a home address set
+ */
+const SafeHomeTrackerInitializer: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
+  const hasInitialized = useRef(false);
+
+  useEffect(() => {
+    const initializeTracker = async () => {
+      if (!isAuthenticated || !user || hasInitialized.current) {
+        return;
+      }
+
+      // Check if user has a home address set
+      if (user.homeAddress && user.homeAddress.coordinates) {
+        console.log('[SafeHomeTracker] User has home address, initializing tracker...');
+        
+        const { startSafeHomeTracking, isSafeHomeTrackingActive } = await import('./services/safeHomeTrackerService');
+        
+        // Check if tracking is already active
+        const isActive = await isSafeHomeTrackingActive();
+        if (isActive) {
+          console.log('[SafeHomeTracker] Tracking already active');
+          hasInitialized.current = true;
+          return;
+        }
+
+        // Start tracking
+        const success = await startSafeHomeTracking({
+          latitude: user.homeAddress.coordinates.lat,
+          longitude: user.homeAddress.coordinates.lng,
+          address: user.homeAddress.address,
+        });
+
+        if (success) {
+          console.log('[SafeHomeTracker] Background tracking started successfully');
+          hasInitialized.current = true;
+        } else {
+          console.warn('[SafeHomeTracker] Failed to start background tracking');
+        }
+      } else {
+        console.log('[SafeHomeTracker] No home address set, skipping tracker initialization');
+      }
+    };
+
+    initializeTracker();
+  }, [isAuthenticated, user]);
+
+  return null;
+};
+
+/**
  * Deep Link Handler Component
  * Handles deep links when user is authenticated
  * Also monitors clipboard for EVA-ALERT codes (for iPhone camera QR scanning)
@@ -204,6 +256,7 @@ export default function App() {
         <QuickActionNotificationProvider>
           <SafeHomeNotificationProvider>
             <GlobalNotificationProvider>
+              <SafeHomeTrackerInitializer />
               <DeepLinkHandler />
               <StatusBar style="dark" />
               <GlobalFriendRequestNotification />

@@ -309,3 +309,28 @@ export const cancelFriendRequest = async (requestId: string): Promise<void> => {
   }
 };
 
+/**
+ * Send safe home notification to all friends
+ * This is called automatically when the user returns home
+ */
+export const sendSafeHomeNotification = async (token: string): Promise<void> => {
+  console.log('[FriendService] Sending safe home notification to friends...');
+  
+  const response = await fetch(`${API_BASE_URL}/api/notifications/safe-home`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    console.error('[FriendService] Error sending safe home notification:', error);
+    throw new Error(error.message || 'Failed to send safe home notification');
+  }
+
+  const data = await response.json();
+  console.log('[FriendService] Safe home notification sent successfully:', data);
+};
+

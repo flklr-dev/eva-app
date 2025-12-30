@@ -484,6 +484,20 @@ export const ProfileTab: React.FC = () => {
       if (setUser && updatedUser) {
         setUser(updatedUser);
       }
+
+      // Start safe home tracking with the new home address
+      const { startSafeHomeTracking } = await import('../../services/safeHomeTrackerService');
+      const trackingStarted = await startSafeHomeTracking({
+        latitude: homeAddress.coordinates.lat,
+        longitude: homeAddress.coordinates.lng,
+        address: homeAddress.address,
+      });
+
+      if (trackingStarted) {
+        console.log('[ProfileTab] Safe home tracking started successfully');
+      } else {
+        console.warn('[ProfileTab] Failed to start safe home tracking - may need background location permission');
+      }
       
       Alert.alert('Success', 'Home address updated successfully');
     } catch (error) {

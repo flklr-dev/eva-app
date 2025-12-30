@@ -6,6 +6,7 @@ import {
   getAllSubscriptions,
   getAllUsers,
   sendNotification,
+  sendSafeHomeNotificationToFriends,
 } from '../controllers/notificationController';
 import { authMiddleware as authenticateToken } from '../middleware/authMiddleware';
 import { adminAuthMiddleware as adminAuthenticateToken } from '../middleware/adminAuthMiddleware';
@@ -16,6 +17,7 @@ const router = express.Router();
 router.post('/subscribe', authenticateToken, subscribe);
 router.post('/unsubscribe', authenticateToken, unsubscribe);
 router.get('/status', authenticateToken, getStatus);
+router.post('/safe-home', authenticateToken, sendSafeHomeNotificationToFriends);
 
 // Admin routes (require admin authentication)
 router.get('/admin/subscriptions', adminAuthenticateToken, getAllSubscriptions);

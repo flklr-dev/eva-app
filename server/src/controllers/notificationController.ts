@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { NotificationSubscription } from '../models/NotificationSubscription';
 import User from '../models/User';
+import Friend from '../models/Friend';
 
 // Subscribe to notifications
 export const subscribe = async (req: Request, res: Response) => {
@@ -212,5 +213,107 @@ export const sendNotification = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Send notification error:', error);
     res.status(500).json({ message: 'Failed to send notification', error: error.message });
+  }
+};
+
+/**
+ * Send safe home notification to all friends
+ * This is triggered automatically when a user returns home
+ */
+export const sendSafeHomeNotificationToFriends = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    
+    console.log('[SafeHomeNotification] Sending notification for user:', userId);
+
+    // Get user details
+    const user = await User.findById(userId).select('name homeAddress');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get all accepted friendships where this user is involved
+    const friendships = await Friend.find({
+      $or: [
+        { requesterId: userId },
+        { recipientId: userId },
+      ],
+      status: 'accepted',
+    });
+
+    if (friendships.length === 0) {
+      console.log('[SafeHomeNotification] No friends found, skipping notification');
+      return res.status(200).json({
+        message: 'No friends to notify',
+        notificationsSent: 0,
+      });
+    }
+
+    // Extract friend IDs
+    const friendIds = friendships.map(friendship => {
+      return friendship.requesterId.toString() === userId.toString()
+        ? friendship.recipientId
+        : friendship.requesterId;
+    });
+
+    console.log('[SafeHomeNotification] Found', friendIds.length, 'friends to notify');
+
+    // Get active subscriptions for all friends
+    const subscriptions = await NotificationSubscription.find({
+      userId: { $in: friendIds },
+      isActive: true,
+    });
+
+    if (subscriptions.length === 0) {
+      console.log('[SafeHomeNotification] No friends with active subscriptions');
+      return res.status(200).json({
+        message: 'No friends with active notifications',
+        notificationsSent: 0,
+      });
+    }
+
+    // Get home address for the notification
+    const homeAddressText = user.homeAddress?.address || 'their home';
+
+    // Prepare Expo push notifications
+    const messages = subscriptions.map((sub) => ({
+      to: sub.pushToken,
+      sound: 'default',
+      title: '🏡 Safe Home',
+      body: `${user.name} has safely arrived at ${homeAddressText}`,
+      data: {
+        type: 'safe_home',
+        userId: userId.toString(),
+        userName: user.name,
+        homeAddress: homeAddressText,
+        timestamp: new Date().toISOString(),
+      },
+      badge: 1,
+      channelId: 'default',
+      priority: 'high',
+    }));
+
+    // Send to Expo Push Notification service
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(messages),
+    });
+
+    const result = await response.json();
+
+    console.log('[SafeHomeNotification] Notifications sent:', messages.length);
+
+    res.status(200).json({
+      message: `Safe home notification sent to ${messages.length} friends`,
+      notificationsSent: messages.length,
+      result,
+    });
+  } catch (error: any) {
+    console.error('[SafeHomeNotification] Error:', error);
+    res.status(500).json({ message: 'Failed to send safe home notification', error: error.message });
   }
 };
