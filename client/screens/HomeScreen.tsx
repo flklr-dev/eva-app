@@ -26,6 +26,7 @@ import { useQuickActionNotifications } from '../context/QuickActionNotificationC
 import type { QuickActionKey, HomeStatus } from '../types/quickActions';
 import { QuickActionButton } from '../components/QuickActions';
 import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, FriendRequestsPanel, FriendDetailsPanel, RoutePanel, ContactDetailsPanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
+import { ShareLocationModal } from '../components/BottomSheet/ShareLocationModal';
 import {
   StatusChip,
   BluetoothIndicator,
@@ -105,6 +106,10 @@ const LocationTab: React.FC<{
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // State for Share Location confirmation modal
+  const [showShareLocationModal, setShowShareLocationModal] = useState(false);
+  const [pendingShareLocationValue, setPendingShareLocationValue] = useState<boolean | null>(null);
 
   // Use shared location state if provided, otherwise use local state
   const [localUserLocation, setLocalUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -418,6 +423,10 @@ export const HomeScreen: React.FC = () => {
   
   // Friends with distance state (loaded from API)
   const [friendsWithDistance, setFriendsWithDistance] = useState<FriendWithDistance[]>([]);
+  
+  // State for Share Location confirmation modal
+  const [showShareLocationModal, setShowShareLocationModal] = useState(false);
+  const [pendingShareLocationValue, setPendingShareLocationValue] = useState<boolean | null>(null);
   const [isLoadingFriends, setIsLoadingFriends] = useState(false);
   
   const handleFriendsWithDistanceChange = useCallback((friends: FriendWithDistance[]) => {
@@ -747,11 +756,53 @@ export const HomeScreen: React.FC = () => {
 
   // Toggle handlers - now using ToggleSwitch component which handles its own animation
   const handleToggleShareMyLocation = (value: boolean) => {
-    setShareMyLocation(value);
+    // Show confirmation modal before changing the setting
+    setPendingShareLocationValue(value);
+    setShowShareLocationModal(true);
   };
 
-  const handleToggleShareWithEveryone = (value: boolean) => {
+  const handleConfirmShareLocation = async () => {
+    if (pendingShareLocationValue === null) return;
+    
+    const newValue = pendingShareLocationValue;
+    setShowShareLocationModal(false);
+    setShareMyLocation(newValue);
+    
+    // Sync the setting to the server so friends know if location sharing is active
+    try {
+      if (token) {
+        const { updateSettings } = await import('../services/profileService');
+        await updateSettings({ shareLocation: newValue }, token);
+        console.log('[Location] Share location setting synced to server:', newValue);
+      }
+    } catch (error) {
+      console.error('[Location] Failed to sync share location setting to server:', error);
+      // Revert the toggle on error
+      setShareMyLocation(!newValue);
+    } finally {
+      setPendingShareLocationValue(null);
+    }
+  };
+
+  const handleCancelShareLocation = () => {
+    setShowShareLocationModal(false);
+    setPendingShareLocationValue(null);
+  };
+
+  const handleToggleShareWithEveryone = async (value: boolean) => {
     setShareWithEveryone(value);
+    
+    // Sync the setting to the server
+    try {
+      if (token) {
+        const { updateSettings } = await import('../services/profileService');
+        await updateSettings({ shareWithEveryone: value }, token);
+        console.log('[Location] Share with everyone setting synced to server:', value);
+      }
+    } catch (error) {
+      console.error('[Location] Failed to sync share with everyone setting to server:', error);
+      // Don't revert the toggle - let the user try again
+    }
   };
 
   // SOS button handlers
@@ -1196,6 +1247,15 @@ export const HomeScreen: React.FC = () => {
       );
 
       setFriendsWithDistance(friendsWithDistanceData);
+      
+      // After setting friends, if sharedUserLocation is available (or becomes available),
+      // trigger recalculation to ensure distances are up-to-date
+      // This handles the case where location becomes available after friends are loaded
+      if (sharedUserLocation && friendsWithDistanceData.length > 0) {
+        console.log('[Friends] Location available after loading friends, recalculating distances');
+        const recalculatedFriends = recalculateDistances(friendsWithDistanceData);
+        setFriendsWithDistance(recalculatedFriends);
+      }
     } catch (error: any) {
       console.error('[Friends] Error loading friends:', error);
       // Set empty array on error to show empty state
@@ -1204,7 +1264,7 @@ export const HomeScreen: React.FC = () => {
       setIsLoadingFriends(false);
       isLoadingFriendsRef.current = false;
     }
-  }, [user?.id, token]); // Only include stable dependencies
+  }, [user?.id, token, sharedUserLocation, recalculateDistances]); // Added sharedUserLocation and recalculateDistances
 
   // Store functions in refs to avoid dependency issues
   useEffect(() => {
@@ -1267,12 +1327,23 @@ export const HomeScreen: React.FC = () => {
         loadFriendsRef.current?.();
         loadPendingRequestsCountRef.current?.();
         hasLoadedFriendsRef.current = true;
+        
+        // After loading friends, if sharedUserLocation is available, trigger recalculation
+        // This handles the case where location was already available before navigating to the tab
+        // Use a small delay to ensure friends are loaded first (loadFriends is async)
+        setTimeout(() => {
+          if (sharedUserLocation && friendsWithDistanceRef.current.length > 0) {
+            console.log('[Friends] Tab activated with location available, triggering recalculation');
+            const updatedFriends = recalculateDistances(friendsWithDistanceRef.current);
+            setFriendsWithDistance(updatedFriends);
+          }
+        }, 600); // Delay slightly longer than loadFriends timeout to ensure it completes
       }, 500);
       return () => clearTimeout(timer);
     } else if (!isFriendsTab) {
       friendsTabActiveRef.current = false;
     }
-  }, [activeTab, user?.id, token]); // Removed functions from dependencies to prevent infinite loops
+  }, [activeTab, user?.id, token, sharedUserLocation, recalculateDistances]); // Added sharedUserLocation and recalculateDistances
 
   // Poll for friends updates regardless of tab (for real-time online count across all tabs)
   // Reduced frequency to avoid excessive reloading
@@ -1324,11 +1395,13 @@ export const HomeScreen: React.FC = () => {
     console.log('[Friends] Recalculating distances due to location update', {
       friendsCount: currentFriends.length,
       userLocation: sharedUserLocation,
+      activeTab, // Log current tab to debug tab navigation issues
     });
     
     const updatedFriends = recalculateDistances(currentFriends);
     
-    // Only update if distances actually changed (avoid unnecessary re-renders)
+    // Always update if we have friends and location (even if distances didn't change significantly)
+    // This ensures distances are recalculated when navigating to Friends tab
     const hasChanged = updatedFriends.some((friend, index) => {
       const oldDistance = currentFriends[index]?.distance;
       const newDistance = friend.distance;
@@ -1343,13 +1416,14 @@ export const HomeScreen: React.FC = () => {
       return changed;
     });
 
-    if (hasChanged) {
-      console.log('[Friends] Updating friends with recalculated distances');
+    // Update if distances changed OR if we're on Friends tab (to ensure fresh data when navigating)
+    if (hasChanged || activeTab === 'FRIENDS') {
+      console.log('[Friends] Updating friends with recalculated distances', { hasChanged, activeTab });
       setFriendsWithDistance(updatedFriends);
     } else {
       console.log('[Friends] No distance changes detected, skipping update');
     }
-  }, [sharedUserLocation, recalculateDistances]); // Recalculate when location changes
+  }, [sharedUserLocation, recalculateDistances, activeTab]); // Added activeTab to trigger recalculation when navigating to Friends tab
 
   // Refresh friends list when a request is accepted
   const handleRequestAccepted = useCallback(() => {
@@ -1555,10 +1629,18 @@ export const HomeScreen: React.FC = () => {
                  shareWithEveryone={shareWithEveryone}
                  onToggleShareMyLocation={handleToggleShareMyLocation}
                  onToggleShareWithEveryone={handleToggleShareWithEveryone}
-               />
-             )}
+                />
+              )}
 
-             {/* Message Settings - Shown when message mode is active, above separator (hidden in Friends, Activity, Device, and Profile tab) */}
+              {/* Share Location Confirmation Modal */}
+              <ShareLocationModal
+                visible={showShareLocationModal}
+                isEnabled={pendingShareLocationValue ?? false}
+                onConfirm={handleConfirmShareLocation}
+                onCancel={handleCancelShareLocation}
+              />
+
+              {/* Message Settings - Shown when message mode is active, above separator (hidden in Friends, Activity, Device, and Profile tab) */}
              {isMessageMode && activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && (
                <MessageModePanel onSendHomeStatus={handleSendHomeStatus} />
              )}

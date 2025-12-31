@@ -195,6 +195,7 @@ export const getFriendsWithToken = async (token: string): Promise<
       timestamp: string;
       accuracy?: number;
     };
+    shareLocation?: boolean; // NEW: Whether friend has location sharing enabled
   }>
 > => {
   const url = `${API_BASE_URL}/api/friends`;

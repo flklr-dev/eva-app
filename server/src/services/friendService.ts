@@ -49,6 +49,7 @@ export interface FriendWithDetails {
     timestamp: Date;
     accuracy?: number;
   };
+  shareLocation?: boolean; // NEW: Whether friend has location sharing enabled
 }
 
 /**
@@ -365,8 +366,8 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
       { recipientId: userId, status: 'accepted' },
     ],
   })
-    .populate('requesterId', 'name email phone profilePicture isActive lastSeen lastKnownLocation')
-    .populate('recipientId', 'name email phone profilePicture isActive lastSeen lastKnownLocation')
+    .populate('requesterId', 'name email phone profilePicture isActive lastSeen lastKnownLocation settings')
+    .populate('recipientId', 'name email phone profilePicture isActive lastSeen lastKnownLocation settings')
     .sort({ updatedAt: -1 });
 
   console.log('[FriendService] Found', friendships.length, 'friendships');
@@ -386,6 +387,16 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
     // Log phone number info
     console.log('[FriendService] Friend:', friendUser.name, 'Phone:', friendUser.phone || 'No phone');
 
+    // Respect shareLocation setting: only return lastKnownLocation if friend has sharing enabled
+    // If sharing is disabled, friends can still see the last known location (for safety),
+    // but it won't be updated anymore
+    let lastKnownLocation = friendUser.lastKnownLocation;
+    
+    // If friend has disabled location sharing, we still return lastKnownLocation
+    // but the client should understand it's the last saved location, not current
+    // This is for safety - friends can see where you were last seen
+    // Note: The location won't update anymore if sharing is off
+    
     return {
       id: friendUser._id.toString(),
       name: friendUser.name,
@@ -398,7 +409,9 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
       isActive: friendUser.isActive,
       isOnline, // NEW: Determined from lastSeen
       lastSeen: friendUser.lastSeen,
-      lastKnownLocation: friendUser.lastKnownLocation,
+      lastKnownLocation: lastKnownLocation, // Always return if available (for safety)
+      // Include shareLocation setting so client can show appropriate UI
+      shareLocation: friendUser.settings?.shareLocation ?? false,
     };
   });
 
@@ -457,8 +470,8 @@ export const getFriendDetails = async (userId: string, friendId: string): Promis
       { requesterId: friendId, recipientId: userId, status: 'accepted' },
     ],
   })
-    .populate('requesterId', 'name email phone profilePicture isActive lastSeen lastKnownLocation')
-    .populate('recipientId', 'name email phone profilePicture isActive lastSeen lastKnownLocation');
+    .populate('requesterId', 'name email phone profilePicture isActive lastSeen lastKnownLocation settings')
+    .populate('recipientId', 'name email phone profilePicture isActive lastSeen lastKnownLocation settings');
 
   if (!friendship) {
     console.log('[FriendService] Friendship not found for:', { userId, friendId });
@@ -492,7 +505,8 @@ export const getFriendDetails = async (userId: string, friendId: string): Promis
     isActive: friendUser.isActive,
     isOnline, // NEW: Determined from lastSeen
     lastSeen: friendUser.lastSeen,
-    lastKnownLocation: friendUser.lastKnownLocation,
+    lastKnownLocation: friendUser.lastKnownLocation, // Always return if available (for safety)
+    shareLocation: friendUser.settings?.shareLocation ?? false, // Include shareLocation setting
   };
 };
 
