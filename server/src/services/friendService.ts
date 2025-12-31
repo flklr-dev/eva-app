@@ -396,7 +396,7 @@ export const getFriends = async (userId: string): Promise<FriendWithDetails[]> =
     // but the client should understand it's the last saved location, not current
     // This is for safety - friends can see where you were last seen
     // Note: The location won't update anymore if sharing is off
-    
+
     return {
       id: friendUser._id.toString(),
       name: friendUser.name,

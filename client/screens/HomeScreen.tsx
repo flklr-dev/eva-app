@@ -478,30 +478,52 @@ export const HomeScreen: React.FC = () => {
   
   const handleRoute = (friend: FriendWithDistance) => {
     console.log('Route pressed for:', friend.name);
+    
+    // Check if friend has valid location coordinates
+    const hasValidLocation = friend.coordinate && 
+                            friend.coordinate.latitude !== 0 && 
+                            friend.coordinate.longitude !== 0 &&
+                            !isNaN(friend.coordinate.latitude) &&
+                            !isNaN(friend.coordinate.longitude);
+    
+    if (!hasValidLocation) {
+      Alert.alert(
+        'Location Not Available',
+        `${friend.name} hasn't shared their location. You can't get directions to them until they enable location sharing.`,
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
+    
+    // Check if user has location
+    if (!sharedUserLocation) {
+      Alert.alert(
+        'Your Location Required',
+        'Please enable location sharing to get directions to your friend.',
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
+    
     // Keep the selected friend to allow navigation back to details
     setRouteFriend(friend);
     setShowRoutePanel(true);
     
-    // Show initial route with default mode (car) after panel animation starts
-    setTimeout(() => {
-      if (friendsTabRef.current && sharedUserLocation) {
-        friendsTabRef.current.showRoute(
-          sharedUserLocation,
-          friend.coordinate,
-          'car'
-        );
-      }
-    }, 100);
+    // Don't show route immediately - let RoutePanel handle it via onTransportModeChange
+    // This prevents route from showing if user closes panel quickly
   };
   
   const handleTransportModeChange = (mode: string, routeData: any) => {
-    // Update route on map when transport mode changes
-    if (friendsTabRef.current && sharedUserLocation && routeFriend) {
+    // Only update route on map if route panel is still open
+    // This prevents route from appearing if user closed the panel before calculation completed
+    if (showRoutePanel && friendsTabRef.current && sharedUserLocation && routeFriend) {
       friendsTabRef.current.showRoute(
         sharedUserLocation,
         routeFriend.coordinate,
         mode
       );
+    } else {
+      console.log('[HomeScreen] Skipping showRoute - route panel is closed');
     }
   };
   
@@ -522,11 +544,15 @@ export const HomeScreen: React.FC = () => {
   
   const handleBackToDetailsFromRoute = () => {
     setShowRoutePanel(false);
+    // Clear route from map first
+    if (friendsTabRef.current) {
+      friendsTabRef.current.clearRoute();
+    }
     // Set the selected friend to the route friend to show the details panel
     if (routeFriend) {
       setSelectedFriend(routeFriend);
     }
-    // Reset map view to focus on the friend
+    // Reset map view to focus on the friend after clearing route
     setTimeout(() => {
       if (friendsTabRef.current && routeFriend) {
         friendsTabRef.current.navigateToFriend(routeFriend);
@@ -1571,6 +1597,11 @@ export const HomeScreen: React.FC = () => {
                  onClose={handleCloseRoutePanel}
                  onBackToDetails={handleBackToDetailsFromRoute}
                  onTransportModeChange={handleTransportModeChange}
+                 onClearRoute={() => {
+                   if (friendsTabRef.current) {
+                     friendsTabRef.current.clearRoute();
+                   }
+                 }}
                  userLocation={sharedUserLocation}
                />
              )}
@@ -1629,8 +1660,8 @@ export const HomeScreen: React.FC = () => {
                  shareWithEveryone={shareWithEveryone}
                  onToggleShareMyLocation={handleToggleShareMyLocation}
                  onToggleShareWithEveryone={handleToggleShareWithEveryone}
-                />
-              )}
+               />
+             )}
 
               {/* Share Location Confirmation Modal */}
               <ShareLocationModal
@@ -1640,7 +1671,7 @@ export const HomeScreen: React.FC = () => {
                 onCancel={handleCancelShareLocation}
               />
 
-              {/* Message Settings - Shown when message mode is active, above separator (hidden in Friends, Activity, Device, and Profile tab) */}
+             {/* Message Settings - Shown when message mode is active, above separator (hidden in Friends, Activity, Device, and Profile tab) */}
              {isMessageMode && activeTab !== 'FRIENDS' && activeTab !== 'ACTIVITY' && activeTab !== 'DEVICE' && activeTab !== 'PROFILE' && (
                <MessageModePanel onSendHomeStatus={handleSendHomeStatus} />
              )}

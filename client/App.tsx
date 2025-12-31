@@ -255,19 +255,19 @@ export default function App() {
     <SafeAreaProvider>
       <AuthProvider>
         <ActivityProvider>
-          <QuickActionNotificationProvider>
-            <SafeHomeNotificationProvider>
-              <GlobalNotificationProvider>
+        <QuickActionNotificationProvider>
+          <SafeHomeNotificationProvider>
+            <GlobalNotificationProvider>
                 <SafeHomeTrackerInitializer />
-                <DeepLinkHandler />
-                <StatusBar style="dark" />
-                <GlobalFriendRequestNotification />
-                <SafeHomeNotification />
-                <QuickActionNotification />
-                <AppNavigator />
-              </GlobalNotificationProvider>
-            </SafeHomeNotificationProvider>
-          </QuickActionNotificationProvider>
+              <DeepLinkHandler />
+              <StatusBar style="dark" />
+              <GlobalFriendRequestNotification />
+              <SafeHomeNotification />
+              <QuickActionNotification />
+              <AppNavigator />
+            </GlobalNotificationProvider>
+          </SafeHomeNotificationProvider>
+        </QuickActionNotificationProvider>
         </ActivityProvider>
       </AuthProvider>
     </SafeAreaProvider>
