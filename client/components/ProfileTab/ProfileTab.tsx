@@ -752,12 +752,12 @@ export const ProfileTab: React.FC = () => {
               </View>
               <View style={styles.homeAddressTextContainer}>
                 <Text style={styles.homeAddressTitle}>Home Address</Text>
-                {user?.homeAddress ? (
+                {user?.homeAddress?.address ? (
                   <Text style={styles.homeAddressSubtitle} numberOfLines={1}>
                     {user.homeAddress.address}
                   </Text>
                 ) : (
-                  <Text style={styles.homeAddressSubtitle}>Tap to set your home address</Text>
+                  <Text style={styles.homeAddressEmptyState}>Tap to set your home address</Text>
                 )}
               </View>
             </View>
@@ -1132,6 +1132,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: COLORS.TEXT_SECONDARY,
+    flexWrap: 'wrap',
+  },
+  homeAddressEmptyState: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: COLORS.TEXT_SECONDARY,
+    fontStyle: 'italic',
     flexWrap: 'wrap',
   },
   homeSettingsLeft: {

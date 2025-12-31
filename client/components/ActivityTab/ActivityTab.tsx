@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { MapView } from '../MapView';
 import { StatusChip } from '../LocationTab/StatusChip';
@@ -27,6 +27,11 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+
+  // Calculate online friends count (same as FriendsTab and LocationTab)
+  const onlineFriendsCount = useMemo(() => {
+    return friends.filter(friend => friend.status === 'online').length;
+  }, [friends]);
 
   // Convert friends to markers (same as other tabs)
   const friendMarkers = friends.map(friend => ({
@@ -60,7 +65,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       {sharedLocationPermissionGranted && (
         <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
           <StatusChip
-            friendCount={friends.length}
+            friendCount={onlineFriendsCount}
             onDropdownPress={() => console.log('Dropdown pressed')}
           />
           <BluetoothIndicator isConnected={isBluetoothConnected} />
