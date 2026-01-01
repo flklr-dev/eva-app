@@ -1011,10 +1011,21 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
-  const handleMessageFriend = () => {
-    // TODO: Implement message friend functionality (open messaging)
-    console.log('Message friend pressed');
-    Alert.alert('Coming Soon', 'Messaging feature will be available soon');
+  const handleMessageFriend = async () => {
+    try {
+      console.log('Message friend pressed');
+      if (!user?.id || !user?.name) {
+        Alert.alert('Error', 'User information not available');
+        return;
+      }
+
+      // Import the SMS function
+      const { sendSMSInvite } = await import('../utils/shareUtils');
+      await sendSMSInvite(user.id, user.name);
+    } catch (error) {
+      console.error('Error in handleMessageFriend:', error);
+      Alert.alert('Error', 'Failed to open SMS. Please try again.');
+    }
   };
 
   const handleScanFriend = () => {

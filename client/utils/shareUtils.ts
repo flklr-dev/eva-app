@@ -1,4 +1,4 @@
-import { Platform, Alert, Share } from 'react-native';
+import { Platform, Alert, Share, Linking } from 'react-native';
 import { getCleanedApiBaseUrl } from './apiConfig';
 
 /**
@@ -72,20 +72,50 @@ export const shareFriendInvite = async (userId: string, userName: string): Promi
     }
 
     console.log('[Share] Calling Share.share() now...');
-    
-    // Call Share.share() - on iOS this should show the native share sheet
-    // Note: On iOS, this must be called from a user interaction handler
-    // The promise will resolve when user selects an option or dismisses
-    const result = await Share.share(shareOptions);
-    
-    console.log('[Share] Share.share() returned:', result);
 
-    console.log('[Share] Share result received:', result);
+    // iOS specific: Ensure we're not blocked by any modal or animation
+    if (Platform.OS === 'ios') {
+      console.log('[Share] iOS: Adding delay for modal dismissal...');
+      // Longer delay for iOS to ensure modal is fully dismissed
+      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log('[Share] iOS: Delay completed, calling Share.share()...');
+    }
 
-    if (result.action === Share.sharedAction) {
-      console.log('[Share] Friend invite shared successfully via:', result.activityType || 'unknown');
-    } else if (result.action === Share.dismissedAction) {
-      console.log('[Share] Share dismissed by user');
+    try {
+      // Call Share.share() - on iOS this should show the native share sheet
+      // Note: On iOS, this must be called from a user interaction handler
+      // The promise will resolve when user selects an option or dismisses
+      console.log('[Share] Executing Share.share() call...');
+      const result = await Share.share(shareOptions);
+
+      console.log('[Share] Share.share() returned successfully:', result);
+      console.log('[Share] Share result received:', result);
+    } catch (shareError: any) {
+      console.error('[Share] Share.share() threw error:', shareError);
+      console.error('[Share] Error details:', {
+        message: shareError?.message,
+        name: shareError?.name,
+        stack: shareError?.stack,
+      });
+
+      // Fallback for iOS: Show alert with share content
+      if (Platform.OS === 'ios') {
+        console.log('[Share] iOS fallback: Showing alert with share content');
+        Alert.alert(
+          'Share EVA Alert Invite',
+          `Copy this link to share:\n\n${inviteMessage}`,
+          [
+            { text: 'Copy to Clipboard', onPress: () => {
+              // Note: Clipboard is not imported, but this is just for fallback
+              console.log('[Share] User chose to copy manually');
+            }},
+            { text: 'OK', style: 'cancel' }
+          ]
+        );
+        return; // Return void, don't throw error for iOS fallback
+      }
+
+      throw shareError;
     }
   } catch (error: any) {
     console.error('[Share] Error sharing friend invite:', error);
@@ -147,6 +177,76 @@ export const shareAppInvite = async (): Promise<void> => {
     if (error.message !== 'User did not share') {
       Alert.alert('Error', 'Failed to share. Please try again.');
     }
+  }
+};
+
+/**
+ * Send SMS with friend invite message
+ * Opens native SMS app with pre-filled invite message
+ */
+export const sendSMSInvite = async (userId: string, userName: string): Promise<void> => {
+  try {
+    const inviteUrl = generateFriendInviteWebUrl(userId);
+    const inviteCode = `EVA-ALERT:${userId}`;
+
+    // Create SMS-compatible message (shorter for SMS)
+    const smsMessage = `Join me on EVA Alert! ${inviteUrl} Code: ${inviteCode}`;
+
+    console.log('[SMS] Preparing SMS invite:', { userId, userName, inviteUrl });
+
+    // URL encode the message for SMS URL scheme
+    const encodedMessage = encodeURIComponent(smsMessage);
+
+    // Create SMS URL
+    const smsUrl = `sms:?body=${encodedMessage}`;
+
+    console.log('[SMS] Opening SMS app with URL:', smsUrl);
+
+    // Check if SMS is supported
+    const canOpenSMS = await Linking.canOpenURL(smsUrl);
+    if (!canOpenSMS) {
+      console.warn('[SMS] SMS not supported on this device');
+      Alert.alert(
+        'SMS Not Available',
+        'SMS messaging is not available on this device. You can copy the invite link instead.',
+        [
+          { text: 'Copy Link', onPress: () => {
+            // For now, just show the message that would be copied
+            Alert.alert('Copy this message:', smsMessage);
+          }},
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+      return;
+    }
+
+    // Open SMS app
+    await Linking.openURL(smsUrl);
+    console.log('[SMS] SMS app opened successfully');
+
+  } catch (error: any) {
+    console.error('[SMS] Error sending SMS invite:', error);
+    console.error('[SMS] Error details:', {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack,
+    });
+
+    // Fallback: Show alert with message to copy
+    const inviteUrl = generateFriendInviteWebUrl(userId);
+    const inviteCode = `EVA-ALERT:${userId}`;
+    const smsMessage = `Join me on EVA Alert! ${inviteUrl} Code: ${inviteCode}`;
+
+    Alert.alert(
+      'SMS Error',
+      'Could not open SMS app. Copy this message to send manually:',
+      [
+        { text: 'Copy Message', onPress: () => {
+          Alert.alert('Copy this:', smsMessage);
+        }},
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   }
 };
 

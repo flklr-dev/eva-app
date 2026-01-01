@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions, Platform, InteractionManager } from 'react-native';
+import { sendSMSInvite } from '../../utils/shareUtils';
 import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
@@ -89,19 +90,9 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
                 <TouchableOpacity
                   style={styles.option}
                   onPress={() => {
-                    // Close modal first, then call share after a delay
-                    // iOS share sheet cannot appear over a modal
+                    // Close modal and call share function
                     onClose();
-                    if (onShareAfterClose) {
-                      // Use requestAnimationFrame to ensure modal is fully dismissed
-                      requestAnimationFrame(() => {
-                        setTimeout(() => {
-                          onShareAfterClose();
-                        }, 300); // Wait for modal animation to complete
-                      });
-                    } else {
-                      onShare?.();
-                    }
+                    onShareAfterClose?.();
                   }}
                   activeOpacity={0.7}
                 >
@@ -164,19 +155,9 @@ export const InviteFriendModal: React.FC<InviteFriendModalProps> = ({
               <TouchableOpacity
                 style={styles.option}
                 onPress={() => {
-                  // Close modal first, then call share after a delay
-                  // iOS share sheet cannot appear over a modal
+                  // Close modal and call share function
                   onClose();
-                  if (onShareAfterClose) {
-                    // Use requestAnimationFrame to ensure modal is fully dismissed
-                    requestAnimationFrame(() => {
-                      setTimeout(() => {
-                        onShareAfterClose();
-                      }, 300); // Wait for modal animation to complete
-                    });
-                  } else {
-                    onShare?.();
-                  }
+                  onShareAfterClose?.();
                 }}
                 activeOpacity={0.7}
               >
