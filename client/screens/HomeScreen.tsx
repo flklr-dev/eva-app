@@ -27,6 +27,7 @@ import type { QuickActionKey, HomeStatus } from '../types/quickActions';
 import { QuickActionButton } from '../components/QuickActions';
 import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, FriendRequestsPanel, FriendDetailsPanel, RoutePanel, ContactDetailsPanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
 import { ShareLocationModal } from '../components/BottomSheet/ShareLocationModal';
+import { ShareWithEveryoneModal } from '../components/BottomSheet/ShareWithEveryoneModal';
 import {
   StatusChip,
   BluetoothIndicator,
@@ -47,6 +48,7 @@ import { QRCodeDisplay } from '../components/QRCodeDisplay';
 import { getFriendRequests, getFriendsWithToken, removeFriend } from '../services/friendService';
 import { reverseGeocode } from '../utils/geocoding';
 import { initializeWebSocket, disconnectWebSocket, setOnFriendRequestReceived, setOnFriendRequestResponded, emitSafeHome, emitQuickActionMessage } from '../services/webSocketService';
+import { getNearbyUsers, NearbyUser } from '../services/nearbyUsersService';
 import { QuickActionType } from '../components/LocationTab/HomeNotification';
 
 const backgroundImage = require('../assets/background.png');
@@ -87,6 +89,7 @@ const LocationTab: React.FC<{
   onLocationPermissionChange?: (granted: boolean) => void;
   sharedInitialRegion?: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
   friends?: FriendWithDistance[];
+  combinedMarkers?: Marker[];
   actionType?: QuickActionType;
 }> = ({
   showHomeNotification = false,
@@ -98,6 +101,7 @@ const LocationTab: React.FC<{
   onLocationPermissionChange,
   sharedInitialRegion,
   friends = [],
+  combinedMarkers = [],
   actionType = 'safeHome',
 }) => {
   const { token, user } = useAuth();
@@ -345,13 +349,7 @@ const LocationTab: React.FC<{
             userLocation={userLocation}
             userProfilePicture={user?.profilePicture}
             userName={user?.name}
-            markers={(friends || []).map((friend: FriendWithDistance) => ({
-              id: friend.id,
-              coordinate: friend.coordinate,
-              name: friend.name,
-              status: friend.status,
-              profilePicture: friend.profilePicture,
-            }))}
+            markers={combinedMarkers}
           />
         )}
 
@@ -423,7 +421,10 @@ export const HomeScreen: React.FC = () => {
   
   // Friends with distance state (loaded from API)
   const [friendsWithDistance, setFriendsWithDistance] = useState<FriendWithDistance[]>([]);
-  
+
+  // Nearby users state (when shareWithEveryone is enabled)
+  const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
+
   // State for Share Location confirmation modal
   const [showShareLocationModal, setShowShareLocationModal] = useState(false);
   const [pendingShareLocationValue, setPendingShareLocationValue] = useState<boolean | null>(null);
@@ -647,6 +648,51 @@ export const HomeScreen: React.FC = () => {
     setShareMyLocation,
     setShareWithEveryone,
   } = useQuickActionMode();
+
+  // Initialize quick action state with user settings when user loads
+  useEffect(() => {
+    if (user?.settings) {
+      console.log('[HomeScreen] Initializing quick action state with user settings:', user.settings);
+      setShareMyLocation(user.settings.shareLocation);
+      setShareWithEveryone(user.settings.shareWithEveryone);
+    }
+  }, [user?.settings, setShareMyLocation, setShareWithEveryone]);
+
+  // Combined markers (friends + nearby users) for map display
+  const combinedMarkers = useMemo(() => {
+    const markers: Marker[] = [];
+
+    // Add friend markers
+    (friendsWithDistance || []).forEach((friend: FriendWithDistance) => {
+      markers.push({
+        id: friend.id,
+        coordinate: friend.coordinate,
+        name: friend.name,
+        status: friend.status,
+        profilePicture: friend.profilePicture,
+      });
+    });
+
+    // Add nearby user markers (when shareWithEveryone is enabled)
+    if (shareWithEveryone) {
+      (nearbyUsers || []).forEach((nearbyUser: NearbyUser) => {
+        if (nearbyUser.lastKnownLocation?.coordinates) {
+          markers.push({
+            id: nearbyUser.id,
+            coordinate: {
+              latitude: nearbyUser.lastKnownLocation.coordinates.lat,
+              longitude: nearbyUser.lastKnownLocation.coordinates.lng,
+            },
+            name: nearbyUser.name,
+            status: 'nearby', // Special status for nearby users
+            profilePicture: nearbyUser.profilePicture,
+          });
+        }
+      });
+    }
+
+    return markers;
+  }, [friendsWithDistance, nearbyUsers, shareWithEveryone]);
   
   // Use custom hooks for complex logic
   const {
@@ -815,20 +861,42 @@ export const HomeScreen: React.FC = () => {
     setPendingShareLocationValue(null);
   };
 
-  const handleToggleShareWithEveryone = async (value: boolean) => {
-    setShareWithEveryone(value);
+  // State for Share With Everyone confirmation modal
+  const [showShareWithEveryoneModal, setShowShareWithEveryoneModal] = useState(false);
+  const [pendingShareWithEveryoneValue, setPendingShareWithEveryoneValue] = useState<boolean | null>(null);
+
+  const handleToggleShareWithEveryone = (value: boolean) => {
+    // Show confirmation modal before changing the setting
+    setPendingShareWithEveryoneValue(value);
+    setShowShareWithEveryoneModal(true);
+  };
+
+  const handleConfirmShareWithEveryone = async () => {
+    if (pendingShareWithEveryoneValue === null) return;
+    
+    const newValue = pendingShareWithEveryoneValue;
+    setShowShareWithEveryoneModal(false);
+    setShareWithEveryone(newValue);
     
     // Sync the setting to the server
     try {
       if (token) {
         const { updateSettings } = await import('../services/profileService');
-        await updateSettings({ shareWithEveryone: value }, token);
-        console.log('[Location] Share with everyone setting synced to server:', value);
+        await updateSettings({ shareWithEveryone: newValue }, token);
+        console.log('[Location] Share with everyone setting synced to server:', newValue);
       }
     } catch (error) {
       console.error('[Location] Failed to sync share with everyone setting to server:', error);
-      // Don't revert the toggle - let the user try again
+      // Revert the toggle on error
+      setShareWithEveryone(!newValue);
+    } finally {
+      setPendingShareWithEveryoneValue(null);
     }
+  };
+
+  const handleCancelShareWithEveryone = () => {
+    setShowShareWithEveryoneModal(false);
+    setPendingShareWithEveryoneValue(null);
   };
 
   // SOS button handlers
@@ -1086,6 +1154,40 @@ export const HomeScreen: React.FC = () => {
       }
     };
   }, []);
+
+  // Fetch nearby users when shareWithEveryone is enabled and location is available
+  useEffect(() => {
+    const fetchNearbyUsers = async () => {
+      if (!shareWithEveryone || !sharedUserLocation || !token) {
+        setNearbyUsers([]);
+        return;
+      }
+
+      try {
+        console.log('[HomeScreen] Fetching nearby users for shareWithEveryone...');
+        const response = await getNearbyUsers(token, sharedUserLocation.latitude, sharedUserLocation.longitude);
+        setNearbyUsers(response.users);
+        console.log(`[HomeScreen] Found ${response.users.length} nearby users`);
+      } catch (error: any) {
+        console.error('[HomeScreen] Error fetching nearby users:', error);
+        setNearbyUsers([]);
+      }
+    };
+
+    fetchNearbyUsers();
+
+    // Set up interval to refresh nearby users every 30 seconds when enabled
+    let intervalId: NodeJS.Timeout | null = null;
+    if (shareWithEveryone && sharedUserLocation) {
+      intervalId = setInterval(fetchNearbyUsers, 30000);
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [shareWithEveryone, sharedUserLocation, token]);
 
   // Load pending friend requests count
   const loadPendingRequestsCount = useCallback(async (forceRefresh = false) => {
@@ -1470,6 +1572,7 @@ export const HomeScreen: React.FC = () => {
           onLocationPermissionChange={setSharedLocationPermissionGranted}
           sharedInitialRegion={sharedInitialRegion}
           friends={friendsWithDistance}
+          combinedMarkers={combinedMarkers}
           actionType={actionType}
         />
       );
@@ -1669,6 +1772,14 @@ export const HomeScreen: React.FC = () => {
                 isEnabled={pendingShareLocationValue ?? false}
                 onConfirm={handleConfirmShareLocation}
                 onCancel={handleCancelShareLocation}
+              />
+
+              {/* Share With Everyone Confirmation Modal */}
+              <ShareWithEveryoneModal
+                visible={showShareWithEveryoneModal}
+                isEnabled={pendingShareWithEveryoneValue ?? false}
+                onConfirm={handleConfirmShareWithEveryone}
+                onCancel={handleCancelShareWithEveryone}
               />
 
              {/* Message Settings - Shown when message mode is active, above separator (hidden in Friends, Activity, Device, and Profile tab) */}

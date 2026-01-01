@@ -251,3 +251,102 @@ export const validateProfileUpdate = (data: ProfileUpdateData): string[] => {
 
   return errors;
 };
+
+/**
+ * Find nearby users within a specified radius (in meters)
+ * Only returns users who have shareWithEveryone enabled
+ */
+export const findNearbyUsers = async (
+  userId: string,
+  latitude: number,
+  longitude: number,
+  radiusMeters: number = 5000 // Default 5km
+): Promise<Array<{
+  id: string;
+  name: string;
+  profilePicture?: string;
+  distance: number; // Distance in meters
+  lastKnownLocation?: {
+    coordinates: {
+      lat: number;
+      lng: number;
+    };
+    timestamp: Date;
+  };
+}>> => {
+  // Validate coordinates
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    throw new Error('Invalid coordinates');
+  }
+
+  // Convert radius from meters to degrees (approximate)
+  // 1 degree latitude ≈ 111,000 meters
+  // For longitude, it varies by latitude, but we'll use a conservative estimate
+  const radiusDegrees = radiusMeters / 111000;
+
+  // Find users within the bounding box first (for performance)
+  // Then calculate exact distance
+  const nearbyUsers = await User.find({
+    _id: { $ne: userId }, // Exclude self
+    'settings.shareWithEveryone': true, // Only users who share with everyone
+    'settings.shareLocation': true, // Must have location sharing enabled
+    'lastKnownLocation.coordinates.lat': {
+      $gte: latitude - radiusDegrees,
+      $lte: latitude + radiusDegrees,
+    },
+    'lastKnownLocation.coordinates.lng': {
+      $gte: longitude - radiusDegrees,
+      $lte: longitude + radiusDegrees,
+    },
+    isActive: true,
+  }).select('name profilePicture lastKnownLocation');
+
+  // Calculate exact distance using Haversine formula
+  const usersWithDistance = nearbyUsers
+    .map((user) => {
+      if (!user.lastKnownLocation?.coordinates) {
+        return null;
+      }
+
+      const userLat = user.lastKnownLocation.coordinates.lat;
+      const userLng = user.lastKnownLocation.coordinates.lng;
+
+      // Haversine formula to calculate distance in meters
+      const R = 6371000; // Earth's radius in meters
+      const dLat = ((userLat - latitude) * Math.PI) / 180;
+      const dLng = ((userLng - longitude) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((latitude * Math.PI) / 180) *
+          Math.cos((userLat * Math.PI) / 180) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = R * c;
+
+      // Only include if within radius
+      if (distance > radiusMeters) {
+        return null;
+      }
+
+      return {
+        id: user._id.toString(),
+        name: user.name,
+        profilePicture: user.profilePicture,
+        distance: Math.round(distance), // Round to nearest meter
+        lastKnownLocation: user.lastKnownLocation
+          ? {
+              coordinates: {
+                lat: user.lastKnownLocation.coordinates.lat,
+                lng: user.lastKnownLocation.coordinates.lng,
+              },
+              timestamp: user.lastKnownLocation.timestamp,
+            }
+          : undefined,
+      };
+    })
+    .filter((user): user is NonNullable<typeof user> => user !== null)
+    .sort((a, b) => a.distance - b.distance); // Sort by distance, nearest first
+
+  return usersWithDistance;
+};

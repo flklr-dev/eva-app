@@ -160,6 +160,9 @@ const userSchema = new Schema<IUser>(
 // Indexes (email already has unique index from unique: true)
 userSchema.index({ isActive: 1 });
 userSchema.index({ lastSeen: -1 });
+// Geospatial index for nearby user queries (using 2dsphere for spherical calculations)
+// Note: We'll need to convert lastKnownLocation to GeoJSON format for queries
+userSchema.index({ 'lastKnownLocation.coordinates.lng': 1, 'lastKnownLocation.coordinates.lat': 1 });
 
 // Hash password before saving
 userSchema.pre<IUser>('save', async function (next) {

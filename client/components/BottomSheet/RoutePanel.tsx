@@ -146,7 +146,7 @@ export const RoutePanel: React.FC<RoutePanelProps> = ({
         clearTimeout(timeoutId);
         timeoutIdRef.current = null;
       } catch (fetchError: any) {
-        clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
         timeoutIdRef.current = null;
         abortControllerRef.current = null;
         if (fetchError.name === 'AbortError') {
@@ -325,7 +325,7 @@ export const RoutePanel: React.FC<RoutePanelProps> = ({
       
       // Only clear loading state if this calculation is still relevant and component is mounted
       if (isMountedRef.current && currentCalculationRef.current === mode) {
-        setIsCalculating(false);
+      setIsCalculating(false);
         currentCalculationRef.current = null;
       }
     }
@@ -391,7 +391,7 @@ export const RoutePanel: React.FC<RoutePanelProps> = ({
   const handleModePress = (mode: TransportMode) => {
     // Always recalculate route when mode button is pressed, even if it's the same mode
     // This ensures fresh data and handles any potential state inconsistencies
-    calculateRoute(mode);
+      calculateRoute(mode);
   };
 
   const getTransportIcon = (mode: TransportMode): any => {
@@ -486,15 +486,15 @@ export const RoutePanel: React.FC<RoutePanelProps> = ({
               </TouchableOpacity>
             </View>
           ) : routeData && routeData.mode === selectedMode ? (
-            <View style={styles.routeInfoContent}>
-              <View style={styles.routeInfoLeft}>
+          <View style={styles.routeInfoContent}>
+            <View style={styles.routeInfoLeft}>
                 <Text style={styles.durationText}>{routeData.duration}</Text>
-                <Text style={styles.locationText}>{friend.country || friend.name}</Text>
-              </View>
-              <View style={styles.routeInfoRight}>
-                <Text style={styles.distanceText}>{routeData.distance}</Text>
-              </View>
+                  <Text style={styles.locationText}>{friend.country || friend.name}</Text>
             </View>
+            <View style={styles.routeInfoRight}>
+                <Text style={styles.distanceText}>{routeData.distance}</Text>
+            </View>
+          </View>
           ) : null}
         </BlurView>
       </View>

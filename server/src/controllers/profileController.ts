@@ -7,7 +7,8 @@ import {
   getUserProfile,
   updateUserProfile,
   updateUserSettings,
-  deleteUserAccount
+  deleteUserAccount,
+  findNearbyUsers
 } from '../services/profileService';
 
 interface AuthRequest extends Request {
@@ -347,5 +348,46 @@ export const updateLocation = async (req: AuthRequest, res: Response): Promise<v
   } catch (error: any) {
     console.error('[Server] Update location error:', error);
     res.status(500).json({ message: 'Server error during location update' });
+  }
+};
+
+/**
+ * Get nearby users within 5km radius
+ * Only returns users who have shareWithEveryone enabled
+ */
+export const getNearbyUsers = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { latitude, longitude, radius } = req.query;
+    const userId = req.user?._id.toString()!;
+
+    // Validate coordinates
+    const lat = latitude ? parseFloat(latitude as string) : null;
+    const lng = longitude ? parseFloat(longitude as string) : null;
+    const radiusMeters = radius ? parseFloat(radius as string) : 5000; // Default 5km
+
+    if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) {
+      res.status(400).json({ message: 'Valid latitude and longitude are required' });
+      return;
+    }
+
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      res.status(400).json({ message: 'Invalid coordinate values' });
+      return;
+    }
+
+    if (radiusMeters < 0 || radiusMeters > 50000) {
+      res.status(400).json({ message: 'Radius must be between 0 and 50000 meters' });
+      return;
+    }
+
+    const nearbyUsers = await findNearbyUsers(userId, lat, lng, radiusMeters);
+
+    res.json({
+      users: nearbyUsers,
+      count: nearbyUsers.length,
+    });
+  } catch (error: any) {
+    console.error('[Server] Get nearby users error:', error);
+    res.status(500).json({ message: 'Server error while fetching nearby users' });
   }
 };

@@ -7,7 +7,8 @@ import {
   updateProfilePicture,
   updateSettings,
   deleteAccount,
-  updateLocation
+  updateLocation,
+  getNearbyUsers
 } from '../controllers/profileController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -97,6 +98,7 @@ router.patch('/', updateProfileValidation, updateProfile);
 router.patch('/picture', updateProfilePicture); // TODO: Implement with chosen storage strategy
 router.patch('/settings', updateSettingsValidation, updateSettings);
 router.patch('/location', updateLocationValidation, updateLocation);
+router.get('/nearby', getNearbyUsers);
 router.delete('/', deleteAccount);
 
 export default router;

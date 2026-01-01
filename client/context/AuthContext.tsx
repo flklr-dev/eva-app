@@ -9,6 +9,11 @@ interface User {
   phone?: string;
   countryCode?: string;
   profilePicture?: string;
+  settings: {
+    shareLocation: boolean;
+    shareWithEveryone: boolean;
+    notificationsEnabled: boolean;
+  };
   homeAddress?: {
     address: string;
     coordinates: {
@@ -69,7 +74,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setToken(storedToken);
       const currentUser = await authService.getCurrentUser();
         if (currentUser) {
-          // Fetch full profile to get phone and countryCode
+          // Fetch full profile to get phone, countryCode, and settings
           try {
             const fullProfile = await import('../services/profileService').then(mod => mod.getProfile(storedToken));
             setUser({
@@ -79,12 +84,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               phone: fullProfile.phone,
               countryCode: fullProfile.countryCode,
               profilePicture: currentUser.profilePicture,
+              settings: fullProfile.settings,
               homeAddress: fullProfile.homeAddress,
             });
           } catch (profileError) {
             console.error('Failed to fetch full profile, using basic user data:', profileError);
-            // Fallback to basic user data
-            setUser(currentUser);
+            // Fallback to basic user data with default settings
+            setUser({
+              ...currentUser,
+              settings: {
+                shareLocation: true,
+                shareWithEveryone: false,
+                notificationsEnabled: true,
+              },
+            });
           }
         } else {
           // Token invalid or expired
