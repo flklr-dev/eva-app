@@ -14,6 +14,7 @@ import { SafeHomeNotification } from './components/SafeHomeNotification';
 import { QuickActionNotificationProvider } from './context/QuickActionNotificationContext';
 import { QuickActionNotification } from './components/QuickActionNotification';
 import { ActivityProvider } from './context/ActivityContext';
+import { BluetoothProvider } from './context/BluetoothContext';
 
 /**
  * Safe Home Tracker Initializer
@@ -258,13 +259,15 @@ export default function App() {
         <QuickActionNotificationProvider>
           <SafeHomeNotificationProvider>
             <GlobalNotificationProvider>
+              <BluetoothProvider>
                 <SafeHomeTrackerInitializer />
-              <DeepLinkHandler />
-              <StatusBar style="dark" />
-              <GlobalFriendRequestNotification />
-              <SafeHomeNotification />
-              <QuickActionNotification />
-              <AppNavigator />
+                <DeepLinkHandler />
+                <StatusBar style="dark" />
+                <GlobalFriendRequestNotification />
+                <SafeHomeNotification />
+                <QuickActionNotification />
+                <AppNavigator />
+              </BluetoothProvider>
             </GlobalNotificationProvider>
           </SafeHomeNotificationProvider>
         </QuickActionNotificationProvider>

@@ -1,4 +1,4 @@
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { Alert } from 'react-native';
 import { sendFriendRequest } from '../services/friendService';
 import { getApiBaseUrl } from './apiConfig';
@@ -6,6 +6,7 @@ import { getApiBaseUrl } from './apiConfig';
 /**
  * Deep Link Handler
  * Handles eva-alert:// URLs for friend invitations
+ * Also supports exp:// URLs for Expo Go development
  */
 
 export interface DeepLinkData {
@@ -17,16 +18,19 @@ export interface DeepLinkData {
 /**
  * Parse deep link URL and extract data
  * Supports multiple formats:
- * 1. eva-alert://invite/{userId} (custom URL scheme)
- * 2. https://{domain}/invite/{userId} (HTTPS URL for QR codes)
- * 3. EVA-ALERT:{userId} (legacy text format)
+ * 1. eva-alert://invite/{userId} (custom URL scheme - standalone builds)
+ * 2. exp://IP:PORT/--/invite/{userId} (Expo Go development)
+ * 3. https://{domain}/invite/{userId} (HTTPS URL for QR codes)
+ * 4. EVA-ALERT:{userId} (legacy text format for clipboard)
  */
 export const parseDeepLink = (url: string): DeepLinkData => {
   try {
     // Remove any whitespace
     const cleanUrl = url.trim();
+    
+    console.log('[DeepLink] Parsing URL:', cleanUrl);
 
-    // Format 1: Check if it's an eva-alert:// URL
+    // Format 1: Check if it's an eva-alert:// URL (standalone builds)
     if (cleanUrl.startsWith('eva-alert://')) {
       const urlWithoutScheme = cleanUrl.replace('eva-alert://', '');
       const parts = urlWithoutScheme.split('/').filter(Boolean);
@@ -38,6 +42,7 @@ export const parseDeepLink = (url: string): DeepLinkData => {
       const [type, ...rest] = parts;
 
       if (type === 'invite' && rest.length > 0) {
+        console.log('[DeepLink] Matched eva-alert://invite format, userId:', rest[0]);
         return {
           type: 'invite',
           userId: rest[0],
@@ -56,13 +61,47 @@ export const parseDeepLink = (url: string): DeepLinkData => {
       return { type: 'unknown', path: urlWithoutScheme };
     }
 
-    // Format 2: Check if it's an HTTPS URL with /invite/ path
+    // Format 2: Check if it's an exp:// URL (Expo Go development)
+    // Format: exp://IP:PORT/--/invite/{userId}
+    if (cleanUrl.startsWith('exp://') || cleanUrl.startsWith('exps://')) {
+      try {
+        // Parse the exp:// URL
+        // Example: exp://192.168.137.1:8081/--/invite/abc123
+        const expMatch = cleanUrl.match(/exp[s]?:\/\/[^/]+\/--\/(.+)/);
+        if (expMatch) {
+          const pathAfterSlashes = expMatch[1];
+          const parts = pathAfterSlashes.split('/').filter(Boolean);
+          
+          if (parts.length >= 2 && parts[0] === 'invite') {
+            console.log('[DeepLink] Matched exp://...--/invite format, userId:', parts[1]);
+            return {
+              type: 'invite',
+              userId: parts[1],
+              path: parts.slice(1).join('/'),
+            };
+          }
+          
+          if (parts.length >= 2 && parts[0] === 'user') {
+            return {
+              type: 'user',
+              userId: parts[1],
+              path: parts.slice(1).join('/'),
+            };
+          }
+        }
+      } catch (expError) {
+        console.log('[DeepLink] Error parsing exp:// URL:', expError);
+      }
+    }
+
+    // Format 3: Check if it's an HTTPS URL with /invite/ path
     if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
       try {
         const urlObj = new URL(cleanUrl);
         const pathParts = urlObj.pathname.split('/').filter(Boolean);
         
         if (pathParts.length >= 2 && pathParts[0] === 'invite') {
+          console.log('[DeepLink] Matched http(s)://*/invite format, userId:', pathParts[1]);
           return {
             type: 'invite',
             userId: pathParts[1],
@@ -74,10 +113,11 @@ export const parseDeepLink = (url: string): DeepLinkData => {
       }
     }
 
-    // Format 3: Check if it's EVA-ALERT:{userId} text format (legacy)
+    // Format 4: Check if it's EVA-ALERT:{userId} text format (clipboard)
     if (cleanUrl.startsWith('EVA-ALERT:')) {
       const userId = cleanUrl.replace('EVA-ALERT:', '').trim();
       if (userId) {
+        console.log('[DeepLink] Matched EVA-ALERT: format, userId:', userId);
         return {
           type: 'invite',
           userId: userId,
@@ -85,7 +125,7 @@ export const parseDeepLink = (url: string): DeepLinkData => {
       }
     }
 
-    // Format 4: Check if it's eva-alert: (without //) - some scanners might strip the //
+    // Format 5: Check if it's eva-alert: (without //) - some scanners might strip the //
     if (cleanUrl.startsWith('eva-alert:')) {
       const urlWithoutScheme = cleanUrl.replace('eva-alert:', '');
       const parts = urlWithoutScheme.split('/').filter(Boolean);
@@ -93,6 +133,7 @@ export const parseDeepLink = (url: string): DeepLinkData => {
       if (parts.length > 0) {
         const [type, ...rest] = parts;
         if (type === 'invite' && rest.length > 0) {
+          console.log('[DeepLink] Matched eva-alert: (no //) format, userId:', rest[0]);
           return {
             type: 'invite',
             userId: rest[0],
@@ -255,16 +296,28 @@ export const initializeDeepLinkListener = (
   const handleUrl = async (event: { url: string }) => {
     console.log('[DeepLink] Received URL:', event.url);
     
+    // Skip normal Expo start URLs (they don't contain invite paths)
+    // These are like: exp://192.168.1.1:8081 or exp://10.10.83.174:8081
+    if (event.url.match(/^exp[s]?:\/\/[\d.]+:\d+\/?$/)) {
+      console.log('[DeepLink] Normal Expo start URL, skipping...');
+      return;
+    }
+    
     const linkData = parseDeepLink(event.url);
     
     if (linkData.type === 'invite' && linkData.userId) {
+      console.log('[DeepLink] Processing invite for userId:', linkData.userId);
       await onInvite(linkData.userId);
     } else if (linkData.type === 'user' && linkData.userId) {
       // For user profile links, we can navigate to profile or send request
       // For now, treat it as an invite
       await onInvite(linkData.userId);
-    } else {
-      console.warn('[DeepLink] Unknown deep link type:', linkData);
+    } else if (linkData.type === 'unknown') {
+      // Only warn if it looks like it should be an invite link
+      if (event.url.includes('invite') || event.url.includes('EVA-ALERT')) {
+        console.warn('[DeepLink] Could not parse invite link:', event.url);
+      }
+      // Otherwise silently ignore (normal app startup URLs)
     }
   };
 

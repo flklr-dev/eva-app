@@ -19,6 +19,7 @@
     "expo-camera": "~17.0.10",
     "expo-clipboard": "^8.0.8",
     "expo-constants": "~18.0.12",
+    "expo-dev-client": "~6.0.20",
     "expo-device": "~8.0.10",
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "~15.0.8",
@@ -27,9 +28,11 @@
     "expo-notifications": "~0.32.15",
     "expo-status-bar": "~3.0.9",
     "expo-task-manager": "~14.0.9",
+    "expo-updates": "~29.0.15",
     "lucide-react-native": "^0.555.0",
     "react": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-ble-plx": "^3.5.0",
     "react-native-maps": "1.20.1",
     "react-native-phone-number-input": "^2.1.0",
     "react-native-qrcode-svg": "^6.3.21",
@@ -42,6 +45,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "eas-cli": "^16.28.0",
     "typescript": "~5.9.2"
   },
   "private": true

@@ -19,6 +19,9 @@ const friendRequestRespondedCallbacks: Set<() => void> = new Set();
 // Callbacks for activity refresh events
 const activityRefreshCallbacks: Set<() => void> = new Set();
 
+// Callbacks for SOS alerts
+const sosAlertReceivedCallbacks: Set<() => void> = new Set();
+
 // Event types
 export type WebSocketEvent = 
   | 'friend_request_sent'
@@ -161,6 +164,12 @@ export const initializeWebSocket = async (): Promise<void> => {
     socket.on('friend_quick_action_message', (data: { userId: string; userName: string; message: string; type: string; timestamp: string }) => {
       console.log('[WebSocket] Friend sent message:', data);
       handleFriendQuickActionMessage(data);
+    });
+
+    // SOS alert events from friends
+    socket.on('sos_alert', (data: { userId: string; userName: string; message: string; timestamp: string }) => {
+      console.log('[WebSocket] SOS alert received:', data);
+      handleSOSAlert(data);
     });
 
     isConnecting = false;
@@ -378,6 +387,52 @@ const handleFriendQuickActionMessage = async (data: { userId: string; userName: 
   }
 };
 
+// Handle incoming SOS alerts from friends
+const handleSOSAlert = async (data: { userId: string; userName: string; message: string; timestamp: string }) => {
+  try {
+    console.log('[WebSocket] Processing SOS alert from:', data.userName);
+    
+    // Trigger the Bluetooth device if connected
+    try {
+      const { BluetoothProtocol } = await import('./bluetoothProtocol');
+      const success = await BluetoothProtocol.triggerSOSAlarm();
+      if (success) {
+        console.log('[WebSocket] SOS alarm triggered on Bluetooth device');
+      } else {
+        console.error('[WebSocket] Failed to trigger SOS alarm on Bluetooth device');
+      }
+    } catch (bluetoothError) {
+      console.error('[WebSocket] Error triggering Bluetooth SOS:', bluetoothError);
+    }
+    
+    // Show global in-app notification
+    try {
+      showGlobalQuickActionNotification({
+        id: data.userId + '_sos_' + Date.now(),
+        message: `${data.userName || 'A friend'} sent an SOS alert`,
+        type: 'sos',
+        timestamp: new Date(data.timestamp),
+      });
+      console.log('[WebSocket] SOS in-app notification shown');
+    } catch (notifError) {
+      console.error('[WebSocket] Error showing SOS notification:', notifError);
+    }
+    
+    // Trigger activity refresh callbacks
+    activityRefreshCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (e) {
+        console.error('[WebSocket] Error in activity refresh callback:', e);
+      }
+    });
+    
+    console.log('[WebSocket] SOS alert processed');
+  } catch (error) {
+    console.error('[WebSocket] Error handling SOS alert:', error);
+  }
+};
+
 // Disconnect WebSocket
 export const disconnectWebSocket = (): void => {
   if (socket) {
@@ -417,6 +472,16 @@ export const emitQuickActionMessage = (message: string, type: string): void => {
     console.log('[WebSocket] Message emitted to friends');
   } else {
     console.log('[WebSocket] Cannot emit message - not connected');
+  }
+};
+
+// Emit SOS alert to friends
+export const emitSOSAlert = (message: string): void => {
+  if (socket?.connected) {
+    socket.emit('sos_alert', { message });
+    console.log('[WebSocket] SOS alert emitted to friends');
+  } else {
+    console.log('[WebSocket] Cannot emit SOS alert - not connected');
   }
 };
 
@@ -478,6 +543,18 @@ export const removeOnFriendRequestReceived = (callback: () => void): void => {
 
 export const removeOnFriendRequestResponded = (callback: () => void): void => {
   friendRequestRespondedCallbacks.delete(callback);
+};
+
+// Register callback for SOS alert events
+export const setOnSOSAlertReceived = (callback: () => void): (() => void) => {
+  sosAlertReceivedCallbacks.add(callback);
+  console.log('[WebSocket] SOS alert callback registered, total:', sosAlertReceivedCallbacks.size);
+  
+  // Return cleanup function
+  return () => {
+    sosAlertReceivedCallbacks.delete(callback);
+    console.log('[WebSocket] SOS alert callback removed, total:', sosAlertReceivedCallbacks.size);
+  };
 };
 
 // Force reconnect with new token (useful after login)

@@ -3,12 +3,18 @@
     "name": "EVA Alert",
     "slug": "eva-app",
     "version": "1.0.0",
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "orientation": "portrait",
     "icon": "./assets/eva-logo.png",
     "userInterfaceStyle": "light",
-    "projectId": "46bb6629-6cdd-4b7c-8319-7086e679e11e",
+    "scheme": "eva-alert",
+    "projectId": "97637b15-5560-4e3a-b6b2-ef717ca99b43",
     "extra": {
-      "API_URL": "http://eva-app-alb-330167478.us-east-1.elb.amazonaws.com",
+      "API_URL": "http://192.168.254.104:3000",
+      "API_URL_PRODUCTION": "https://4a7plqp6qb.execute-api.us-east-1.amazonaws.com",
       "eas": {
         "projectId": "97637b15-5560-4e3a-b6b2-ef717ca99b43"
       }
@@ -19,10 +25,22 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
+      "requireFullScreen": true,
       "bundleIdentifier": "com.eva.alert",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Allow EVA Alert to use your location to share your position with trusted contacts in emergency situations.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow EVA Alert to use your location to share your position with trusted contacts in emergency situations.",
+        "NSLocationAlwaysUsageDescription": "Allow EVA Alert to track your location in the background to automatically notify friends when you safely arrive home.",
+        "NSBluetoothAlwaysUsageDescription": "Allow EVA Alert to connect to Bluetooth devices for emergency alerts.",
+        "NSBluetoothPeripheralUsageDescription": "Allow EVA Alert to connect to Bluetooth devices for emergency alerts.",
+        "UIBackgroundModes": [
+          "location",
+          "bluetooth-central",
+          "location",
+          "bluetooth-central"
+        ]
       }
     },
     "android": {
@@ -33,7 +51,64 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.eva.alert",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.BLUETOOTH_CONNECT"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "eva-alert",
+              "host": "*"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "eva-alert",
+              "host": "*"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/eva-logo.png"
@@ -43,10 +118,27 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow EVA Alert to use your location to share your position with trusted contacts in emergency situations."
+          "locationAlwaysAndWhenInUsePermission": "Allow EVA Alert to use your location to share your position with trusted contacts in emergency situations.",
+          "locationAlwaysPermission": "Allow EVA Alert to track your location in the background to automatically notify friends when you safely arrive home.",
+          "locationWhenInUsePermission": "Allow EVA Alert to use your location to share your position with trusted contacts in emergency situations.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow EVA Alert to access your camera to scan QR codes for adding friends."
+        }
+      ],
+      "react-native-ble-plx"
     ],
-    "owner": "kit-jorismulkenss-organization"
+    "owner": "kit-jorismulkenss-organization",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/97637b15-5560-4e3a-b6b2-ef717ca99b43"
+    }
   }
 }
