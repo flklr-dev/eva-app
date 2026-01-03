@@ -72,7 +72,7 @@ export const shareFriendInvite = async (userId: string, userName: string): Promi
     }
 
     console.log('[Share] Calling Share.share() now...');
-
+    
     // iOS specific: Ensure we're not blocked by any modal or animation
     if (Platform.OS === 'ios') {
       console.log('[Share] iOS: Adding delay for modal dismissal...');
@@ -82,14 +82,14 @@ export const shareFriendInvite = async (userId: string, userName: string): Promi
     }
 
     try {
-      // Call Share.share() - on iOS this should show the native share sheet
-      // Note: On iOS, this must be called from a user interaction handler
-      // The promise will resolve when user selects an option or dismisses
+    // Call Share.share() - on iOS this should show the native share sheet
+    // Note: On iOS, this must be called from a user interaction handler
+    // The promise will resolve when user selects an option or dismisses
       console.log('[Share] Executing Share.share() call...');
-      const result = await Share.share(shareOptions);
-
+    const result = await Share.share(shareOptions);
+    
       console.log('[Share] Share.share() returned successfully:', result);
-      console.log('[Share] Share result received:', result);
+    console.log('[Share] Share result received:', result);
     } catch (shareError: any) {
       console.error('[Share] Share.share() threw error:', shareError);
       console.error('[Share] Error details:', {

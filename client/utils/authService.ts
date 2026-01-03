@@ -189,4 +189,136 @@ export const authService = {
       return null;
     }
   },
+
+  // Forgot password
+  forgotPassword: async (email: string): Promise<{ message: string }> => {
+    console.log('[authService] Starting forgot password...');
+    console.log('[authService] API URL:', `${CLEANED_API_BASE_URL}/api/auth/forgot-password`);
+    try {
+      const response = await fetch(`${CLEANED_API_BASE_URL}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      console.log('[authService] Forgot password response status:', response.status);
+      
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.log('[authService] Forgot password response is not JSON:', contentType);
+        throw new Error('Server returned invalid response format');
+      }
+      
+      const data = await response.json();
+      console.log('[authService] Forgot password response data:', JSON.stringify(data));
+
+      if (!response.ok) {
+        console.log('[authService] Forgot password failed:', data.message);
+        throw new Error(data.message || 'Forgot password request failed');
+      }
+
+      return data;
+    } catch (error: any) {
+      console.log('[authService] Forgot password error:', error.message);
+      // Network error (server not reachable)
+      if (error.message === 'Failed to fetch' || 
+          error.message.includes('Network request failed') ||
+          error.message.includes('NetworkError') ||
+          error.message.includes('TypeError: Network request failed')) {
+        throw new Error('Cannot connect to server. Please check your internet connection and try again.');
+      }
+      throw error instanceof Error ? error : new Error('Network error');
+    }
+  },
+
+  // Verify OTP
+  verifyOTP: async (email: string, otp: string): Promise<{ message: string }> => {
+    console.log('[authService] Starting OTP verification...');
+    console.log('[authService] API URL:', `${CLEANED_API_BASE_URL}/api/auth/verify-otp`);
+    try {
+      const response = await fetch(`${CLEANED_API_BASE_URL}/api/auth/verify-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, otp }),
+      });
+
+      console.log('[authService] Verify OTP response status:', response.status);
+      
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.log('[authService] Verify OTP response is not JSON:', contentType);
+        throw new Error('Server returned invalid response format');
+      }
+      
+      const data = await response.json();
+      console.log('[authService] Verify OTP response data:', JSON.stringify(data));
+
+      if (!response.ok) {
+        console.log('[authService] OTP verification failed:', data.message);
+        throw new Error(data.message || 'OTP verification failed');
+      }
+
+      return data;
+    } catch (error: any) {
+      console.log('[authService] OTP verification error:', error.message);
+      // Network error (server not reachable)
+      if (error.message === 'Failed to fetch' || 
+          error.message.includes('Network request failed') ||
+          error.message.includes('NetworkError') ||
+          error.message.includes('TypeError: Network request failed')) {
+        throw new Error('Cannot connect to server. Please check your internet connection and try again.');
+      }
+      throw error instanceof Error ? error : new Error('Network error');
+    }
+  },
+
+  // Reset password
+  resetPassword: async (email: string, otp: string, newPassword: string, confirmPassword: string): Promise<{ message: string }> => {
+    console.log('[authService] Starting password reset...');
+    console.log('[authService] API URL:', `${CLEANED_API_BASE_URL}/api/auth/reset-password`);
+    try {
+      const response = await fetch(`${CLEANED_API_BASE_URL}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, otp, newPassword, confirmPassword }),
+      });
+
+      console.log('[authService] Reset password response status:', response.status);
+      
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.log('[authService] Reset password response is not JSON:', contentType);
+        throw new Error('Server returned invalid response format');
+      }
+      
+      const data = await response.json();
+      console.log('[authService] Reset password response data:', JSON.stringify(data));
+
+      if (!response.ok) {
+        console.log('[authService] Password reset failed:', data.message);
+        throw new Error(data.message || 'Password reset failed');
+      }
+
+      return data;
+    } catch (error: any) {
+      console.log('[authService] Password reset error:', error.message);
+      // Network error (server not reachable)
+      if (error.message === 'Failed to fetch' || 
+          error.message.includes('Network request failed') ||
+          error.message.includes('NetworkError') ||
+          error.message.includes('TypeError: Network request failed')) {
+        throw new Error('Cannot connect to server. Please check your internet connection and try again.');
+      }
+      throw error instanceof Error ? error : new Error('Network error');
+    }
+  },
 };

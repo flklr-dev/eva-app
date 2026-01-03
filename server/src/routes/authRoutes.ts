@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { register, login, getCurrentUser } from '../controllers/authController';
+import { register, login, getCurrentUser, forgotPassword, verifyOTP, resetPassword } from '../controllers/authController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
 const router = Router();
@@ -32,9 +32,53 @@ const loginValidation = [
     .withMessage('Password is required'),
 ];
 
+const forgotPasswordValidation = [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email')
+    .normalizeEmail(),
+];
+
+const verifyOTPValidation = [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email')
+    .normalizeEmail(),
+  body('otp')
+    .notEmpty()
+    .withMessage('OTP is required')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be 6 digits'),
+];
+
+const resetPasswordValidation = [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email')
+    .normalizeEmail(),
+  body('otp')
+    .notEmpty()
+    .withMessage('OTP is required')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be 6 digits'),
+  body('newPassword')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters'),
+  body('confirmPassword')
+    .custom((value, { req }) => {
+      if (value !== req.body.newPassword) {
+        throw new Error('Passwords do not match');
+      }
+      return true;
+    }),
+];
+
 // Routes
 router.post('/register', registerValidation, register);
 router.post('/login', loginValidation, login);
 router.get('/me', authMiddleware, getCurrentUser);
+router.post('/forgot-password', forgotPasswordValidation, forgotPassword);
+router.post('/verify-otp', verifyOTPValidation, verifyOTP);
+router.post('/reset-password', resetPasswordValidation, resetPassword);
 
 export default router;

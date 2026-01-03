@@ -11,6 +11,8 @@ import adminAuthRoutes from './routes/adminAuthRoutes';
 import notificationRoutes from './routes/notifications';
 import friendRoutes from './routes/friendRoutes';
 import profileRoutes from './routes/profileRoutes';
+import activityRoutes from './routes/activityRoutes';
+import sosRoutes from './routes/sosRoutes';
 
 // Load environment variables
 console.log('[Server] Loading environment variables...');
@@ -32,7 +34,14 @@ try {
 const app = express();
 
 // Security middleware
-app.use(helmet());
+// Note: We configure helmet to allow the invite page to work properly
+app.use((req, res, next) => {
+  // Skip helmet for invite routes - they need inline scripts for copy functionality
+  if (req.path.startsWith('/invite/')) {
+    return next();
+  }
+  helmet()(req, res, next);
+});
 // Configure CORS with environment-based allowed origins
 const getAllowedOrigins = (): string[] => {
   const origins = [];
@@ -148,20 +157,23 @@ app.get('/invite/:userId', async (req, res) => {
 
   // Fetch user details to display in the invitation page
   let userName = 'Friend';
-  let userEmail = '';
   try {
     const User = require('./models/User').default;
     const user = await User.findById(userId).select('name email');
     if (user) {
       userName = user.name || 'Friend';
-      userEmail = user.email || '';
       console.log('✓ User details fetched for invite page:', userName);
     }
   } catch (error) {
     console.log('⚠ Could not fetch user details for invite page, using default');
   }
 
-  // HTML page that attempts to open the app via deep link
+  // Custom scheme deep link for standalone/production builds
+  const customSchemeLink = `eva-alert://invite/${userId}`;
+
+  console.log('✓ Invite page generated for userId:', userId);
+
+  // HTML page with DEEP LINK as PRIMARY, copy code as BACKUP
   const html = `
     <!DOCTYPE html>
     <html>
@@ -170,6 +182,7 @@ app.get('/invite/:userId', async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Add Friend - EVA Alert</title>
         <style>
+          * { box-sizing: border-box; }
           body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             display: flex;
@@ -185,7 +198,7 @@ app.get('/invite/:userId', async (req, res) => {
           .container {
             background: white;
             border-radius: 20px;
-            padding: 40px;
+            padding: 30px;
             max-width: 400px;
             width: 100%;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
@@ -210,11 +223,6 @@ app.get('/invite/:userId', async (req, res) => {
             color: #333;
             margin: 0;
           }
-          .user-email {
-            font-size: 13px;
-            color: #6b7280;
-            margin: 4px 0 0 0;
-          }
           p {
             color: #666;
             margin: 10px 0;
@@ -229,114 +237,228 @@ app.get('/invite/:userId', async (req, res) => {
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 20px;
+            margin-top: 12px;
             width: 100%;
-            transition: transform 0.2s;
+            transition: transform 0.2s, opacity 0.2s;
+            text-decoration: none;
+            display: block;
           }
           .button:hover {
-            transform: scale(1.05);
+            transform: scale(1.02);
           }
           .button:active {
             transform: scale(0.98);
+            opacity: 0.9;
           }
-          .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-          }
-          .code {
-            background: #f6f7fb;
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-            padding: 12px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            font-size: 14px;
-            word-break: break-all;
-            margin-top: 16px;
-          }
-          .subtle {
-            font-size: 13px;
-            color: #6b7280;
+          .button-secondary {
+            background: #f3f4f6;
+            color: #333;
             margin-top: 10px;
           }
-          .status {
-            margin-top: 14px;
-            font-size: 13px;
-            color: #6b7280;
+          .button-secondary:hover {
+            background: #e5e7eb;
           }
-          .success {
+          .code-container {
+            background: #f6f7fb;
+            border: 2px dashed #667eea;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 20px 0 10px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          .code-container:hover {
+            background: #eef0f5;
+            border-style: solid;
+          }
+          .code-container:active {
+            transform: scale(0.98);
+          }
+          .code-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            word-break: break-all;
+          }
+          .status {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+          }
+          .status.success {
+            background: #ecfdf5;
             color: #059669;
           }
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+          .status.info {
+            background: #eff6ff;
+            color: #1d4ed8;
+          }
+          .instructions {
+            background: #fafafa;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 20px;
+            text-align: left;
+          }
+          .step {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 12px;
+          }
+          .step:last-child {
+            margin-bottom: 0;
+          }
+          .step-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+            height: 24px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 12px;
+          }
+          .step-text {
+            font-size: 14px;
+            color: #374151;
+            line-height: 1.5;
+          }
+          .hidden {
+            display: none;
           }
         </style>
       </head>
       <body>
         <div class="container">
-          <h1>Add Friend</h1>
+          <h1>👥 Add Friend</h1>
+          
           <div class="user-info">
             <p class="user-name">${userName}</p>
           </div>
-          <p>Opening EVA Alert app...</p>
-          <div class="spinner"></div>
-          <p style="font-size: 14px; margin-top: 20px;">Tap below to copy the invitation code:</p>
-          <button class="button" onclick="openApp()">Copy Invitation Code</button>
-          <p class="subtle">Then open the EVA Alert app - the invitation will be processed automatically.</p>
-          <div class="code" id="inviteCode">${inviteCode}</div>
-          <div class="status" id="status"></div>
-        </div>
-        <script>
-          // Copy invitation code to clipboard and provide instructions
-          const inviteCode = '${inviteCode}';
-          const statusEl = document.getElementById('status');
           
-          function openApp() {
-            copyCode();
-            statusEl.textContent = '✅ Code copied! Now open the EVA Alert app - the invitation will be processed automatically.';
-            statusEl.className = 'status success';
-          }
-
-          async function copyCode() {
+          <p>Open EVA Alert to send a friend request</p>
+          
+          <!-- PRIMARY: Open App Button -->
+          <a href="${customSchemeLink}" class="button" id="openAppBtn">
+            📱 Open EVA Alert
+          </a>
+          
+          <div class="instructions">
+            <div class="step">
+              <span class="step-number">1</span>
+              <span class="step-text">Tap <strong>"Open EVA Alert"</strong> above</span>
+            </div>
+            <div class="step">
+              <span class="step-number">2</span>
+              <span class="step-text">The friend request will be sent automatically</span>
+            </div>
+          </div>
+          
+          <p style="margin-top: 20px; font-size: 13px; color: #9ca3af;">If the app doesn't open:</p>
+          
+          <!-- BACKUP: Copy Code Section -->
+          <div class="code-container" id="codeBox">
+            <div class="code-label">Invitation Code (tap to copy)</div>
+            <div class="code" id="inviteCode">${inviteCode}</div>
+          </div>
+          
+          <div id="status" class="status success hidden"></div>
+          
+          <button class="button button-secondary" id="copyBtn">
+            📋 Copy Code
+          </button>
+        </div>
+        
+        <script>
+          var inviteCode = '${inviteCode}';
+          var statusEl = document.getElementById('status');
+          var copyBtn = document.getElementById('copyBtn');
+          var codeBox = document.getElementById('codeBox');
+          
+          function copyToClipboard() {
             try {
               if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(inviteCode);
+                navigator.clipboard.writeText(inviteCode).then(function() {
+                  showCopied();
+                }).catch(function() {
+                  fallbackCopy();
+                });
               } else {
-                // Fallback for older browsers
-                const ta = document.createElement('textarea');
-                ta.value = inviteCode;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.focus();
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
+                fallbackCopy();
               }
-              statusEl.textContent = 'Copied! Open EVA Alert and it will detect the code.';
-              statusEl.className = 'status success';
             } catch (e) {
-              statusEl.textContent = 'Copy failed. Please manually select and copy the code.';
-              statusEl.className = 'status';
+              fallbackCopy();
             }
           }
           
-          // Auto-open on page load
-          window.onload = function() {
-            openApp();
-          };
-          
-          // Also try on visibility change (when user switches back)
-          document.addEventListener('visibilitychange', function() {
-            if (!document.hidden) {
-              openApp();
+          function fallbackCopy() {
+            var textArea = document.createElement('textarea');
+            textArea.value = inviteCode;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-9999px';
+            textArea.style.top = '0';
+            textArea.setAttribute('readonly', '');
+            document.body.appendChild(textArea);
+            
+            var range = document.createRange();
+            range.selectNodeContents(textArea);
+            var selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            textArea.setSelectionRange(0, 999999);
+            
+            try {
+              var successful = document.execCommand('copy');
+              if (successful) {
+                showCopied();
+              } else {
+                showError();
+              }
+            } catch (err) {
+              showError();
             }
-          });
+            
+            document.body.removeChild(textArea);
+          }
+          
+          function showCopied() {
+            codeBox.style.borderColor = '#059669';
+            codeBox.style.background = '#ecfdf5';
+            copyBtn.textContent = '✅ Copied!';
+            copyBtn.style.background = '#059669';
+            copyBtn.style.color = 'white';
+            statusEl.className = 'status success';
+            statusEl.textContent = 'Code copied! Now open EVA Alert app.';
+            statusEl.classList.remove('hidden');
+            
+            setTimeout(function() {
+              copyBtn.textContent = '📋 Copy Again';
+              copyBtn.style.background = '';
+              copyBtn.style.color = '';
+            }, 3000);
+          }
+          
+          function showError() {
+            statusEl.className = 'status info';
+            statusEl.textContent = 'Please long-press the code to copy manually.';
+            statusEl.classList.remove('hidden');
+          }
+          
+          codeBox.addEventListener('click', copyToClipboard);
+          copyBtn.addEventListener('click', copyToClipboard);
         </script>
       </body>
     </html>
@@ -364,6 +486,14 @@ console.log('✓ Profile routes registered at /api/profile');
 
 // Notification Routes
 app.use('/api/notifications', notificationRoutes);
+
+// Activity Routes
+app.use('/api/activities', activityRoutes);
+console.log('✓ Activity routes registered at /api/activities');
+
+// SOS Routes
+app.use('/api/sos', sosRoutes);
+console.log('✓ SOS routes registered at /api/sos');
 
 // Admin Auth Routes
 app.use('/api/admin/auth', adminAuthRoutes);

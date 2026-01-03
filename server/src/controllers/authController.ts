@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import { validationResult } from 'express-validator';
 import User, { IUser } from '../models/User';
 import { JWT_SECRET } from '../config/jwt';
+import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 
 interface AuthRequest extends Request {
   user?: IUser;
@@ -179,5 +181,229 @@ export const getCurrentUser = async (
   } catch (error) {
     console.error('Get current user error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Forgot Password
+export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
+  console.log('[Server] POST /api/auth/forgot-password');
+  console.log('[Server] Request body:', JSON.stringify(req.body));
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      console.log('[Server] Validation errors:', errors.array());
+      res.status(400).json({ errors: errors.array() });
+      return;
+    }
+
+    const { email } = req.body;
+
+    // Find user by email and explicitly select password reset fields
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordResetToken +passwordResetExpires');
+    if (!user) {
+      console.log('[Server] User not found for email:', email);
+      res.status(400).json({ message: 'No account found with this email address. Please check your email and try again.' });
+      return;
+    }
+
+    // Generate OTP (6-digit code)
+    const otp = crypto.randomInt(100000, 999999).toString();
+    
+    // Set OTP expiration (10 minutes)
+    const otpExpiration = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Hash the OTP before storing
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    
+    // Update user with OTP and expiration
+    user.passwordResetToken = otpHash;
+    user.passwordResetExpires = otpExpiration;
+    await user.save();
+    
+    console.log('[Server] Generated OTP for user:', user._id, 'OTP (hashed):', otpHash);
+
+    // Create nodemailer transporter
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    // Email content
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject: 'EVA Alert - Password Reset',
+      text: `You requested to reset your password for EVA Alert.
+
+Your OTP code is: ${otp}
+
+This code will expire in 10 minutes.
+
+If you did not request this, please ignore this email.`,
+      html: `
+        <h2>EVA Alert - Password Reset</h2>
+        <p>You requested to reset your password for EVA Alert.</p>
+        <p><strong>Your OTP code is:</strong> ${otp}</p>
+        <p>This code will expire in 10 minutes.</p>
+        <p>If you did not request this, please ignore this email.</p>
+      `,
+    };
+
+    // Send email
+    await transporter.sendMail(mailOptions);
+    console.log('[Server] Password reset email sent to:', email);
+
+    res.status(200).json({ message: 'If an account with this email exists, a password reset link has been sent.' });
+  } catch (error) {
+    console.error('[Server] Forgot password error:', error);
+    res.status(500).json({ message: 'Server error during password reset request' });
+  }
+};
+
+// Verify OTP
+export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
+  console.log('[Server] POST /api/auth/verify-otp');
+  console.log('[Server] Request body:', JSON.stringify({ email: req.body.email, otp: '***' }));
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      console.log('[Server] Validation errors:', errors.array());
+      res.status(400).json({ errors: errors.array() });
+      return;
+    }
+
+    const { email, otp } = req.body;
+
+    // Find user by email and explicitly select password reset fields
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordResetToken +passwordResetExpires');
+    if (!user) {
+      console.log('[Server] User not found for email:', email);
+      res.status(400).json({ message: 'Invalid email address' });
+      return;
+    }
+
+    // Check if OTP exists
+    if (!user.passwordResetToken) {
+      console.log('[Server] No OTP token found for user:', user._id);
+      res.status(400).json({ message: 'No OTP found. Please request a new one.' });
+      return;
+    }
+    
+    // Check if OTP expiration exists
+    if (!user.passwordResetExpires) {
+      console.log('[Server] No OTP expiration found for user:', user._id);
+      res.status(400).json({ message: 'Invalid OTP. Please request a new one.' });
+      return;
+    }
+    
+    // Add detailed logging for debugging
+    console.log('[Server] Checking OTP expiration for user:', user._id);
+    console.log('[Server] Current time:', new Date());
+    console.log('[Server] OTP expiration time:', user.passwordResetExpires);
+    console.log('[Server] Time difference (ms):', user.passwordResetExpires.getTime() - new Date().getTime());
+    
+    const now = new Date();
+    if (user.passwordResetExpires < now) {
+      console.log('[Server] No valid OTP found or OTP expired for user:', user._id);
+      console.log('[Server] Current time:', now, 'OTP expires at:', user.passwordResetExpires);
+      res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+      return;
+    }
+
+    // Hash the provided OTP and compare with stored hash
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    
+    if (user.passwordResetToken !== otpHash) {
+      console.log('[Server] Invalid OTP for user:', user._id);
+      res.status(400).json({ message: 'Invalid OTP' });
+      return;
+    }
+
+    console.log('[Server] OTP verified successfully for user:', user._id);
+
+    res.status(200).json({ message: 'OTP verified successfully' });
+  } catch (error) {
+    console.error('[Server] Verify OTP error:', error);
+    res.status(500).json({ message: 'Server error during OTP verification' });
+  }
+};
+
+// Reset Password
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  console.log('[Server] POST /api/auth/reset-password');
+  console.log('[Server] Request body:', JSON.stringify({ email: req.body.email, otp: '***' }));
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      console.log('[Server] Validation errors:', errors.array());
+      res.status(400).json({ errors: errors.array() });
+      return;
+    }
+
+    const { email, otp, newPassword } = req.body;
+
+    // Find user by email and explicitly select password reset fields
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordResetToken +passwordResetExpires');
+    if (!user) {
+      console.log('[Server] User not found for email:', email);
+      res.status(400).json({ message: 'Invalid email address' });
+      return;
+    }
+
+    // Check if OTP exists
+    if (!user.passwordResetToken) {
+      console.log('[Server] No OTP token found for user:', user._id);
+      res.status(400).json({ message: 'No OTP found. Please request a new one.' });
+      return;
+    }
+    
+    // Check if OTP expiration exists
+    if (!user.passwordResetExpires) {
+      console.log('[Server] No OTP expiration found for user:', user._id);
+      res.status(400).json({ message: 'Invalid OTP. Please request a new one.' });
+      return;
+    }
+    
+    // Add detailed logging for debugging
+    console.log('[Server] Checking OTP expiration for user:', user._id);
+    console.log('[Server] Current time:', new Date());
+    console.log('[Server] OTP expiration time:', user.passwordResetExpires);
+    console.log('[Server] Time difference (ms):', user.passwordResetExpires.getTime() - new Date().getTime());
+    
+    const now = new Date();
+    if (user.passwordResetExpires < now) {
+      console.log('[Server] No valid OTP found or OTP expired for user:', user._id);
+      console.log('[Server] Current time:', now, 'OTP expires at:', user.passwordResetExpires);
+      res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+      return;
+    }
+
+    // Hash the provided OTP and compare with stored hash
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    
+    if (user.passwordResetToken !== otpHash) {
+      console.log('[Server] Invalid OTP for user:', user._id);
+      res.status(400).json({ message: 'Invalid OTP' });
+      return;
+    }
+
+    // Update user password
+    user.password = newPassword;
+    
+    // Clear the password reset token and expiration
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    
+    await user.save();
+    
+    console.log('[Server] Password reset successfully for user:', user._id);
+
+    res.status(200).json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('[Server] Reset password error:', error);
+    res.status(500).json({ message: 'Server error during password reset' });
   }
 };

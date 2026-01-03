@@ -166,7 +166,7 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
                     secureTextEntry
                     error={fieldErrors.password}
                   />
-                  <TouchableOpacity style={styles.forgotWrapper}>
+                  <TouchableOpacity style={styles.forgotWrapper} onPress={() => onNavigate('FORGOT_PASSWORD')}>
                     <Text style={styles.forgot}>Forgot password?</Text>
                   </TouchableOpacity>
                 </View>

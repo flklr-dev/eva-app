@@ -7,6 +7,9 @@ import { RegisterScreen } from '../screens/RegisterScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { AddToHomeScreen } from '../screens/AddToHomeScreen';
+import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
+import { VerifyOTPScreen } from '../screens/VerifyOTPScreen';
+import { ResetPasswordScreen } from '../screens/ResetPasswordScreen';
 import { preloadImages } from '../utils/imageCache';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,6 +19,14 @@ export type RootStackParamList = {
   REGISTER: undefined;
   HOME: undefined;
   ADD_TO_HOME: undefined;
+  FORGOT_PASSWORD: undefined;
+  VERIFY_OTP: {
+    email: string;
+  };
+  RESET_PASSWORD: {
+    email: string;
+    otp: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -72,6 +83,9 @@ export const AppNavigator: React.FC = () => {
             <Stack.Screen name="REGISTER">
               {props => <RegisterScreen {...props} onNavigate={screen => props.navigation.replace(screen)} />}
             </Stack.Screen>
+            <Stack.Screen name="FORGOT_PASSWORD" component={ForgotPasswordScreen} />
+            <Stack.Screen name="VERIFY_OTP" component={VerifyOTPScreen} />
+            <Stack.Screen name="RESET_PASSWORD" component={ResetPasswordScreen} />
           </>
         ) : (
           <>

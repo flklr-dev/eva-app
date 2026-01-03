@@ -128,7 +128,18 @@ export const NotificationModal: React.FC<ModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    ...Platform.select({
+      ios: {
+        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+        backdropFilter: 'blur(10px)',
+      },
+      android: {
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      },
+      default: {
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      },
+    }),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -137,18 +148,22 @@ const styles = StyleSheet.create({
     maxWidth: 280,
   },
   content: {
-    borderRadius: 20,
-    padding: 28,
+    borderRadius: 14,
+    padding: 24,
     alignItems: 'center',
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        backdropFilter: 'blur(20px)',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.18,
-        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 10,
+        backgroundColor: '#fff',
+        elevation: 8,
         shadowColor: 'rgba(0,0,0,0.15)',
       },
       default: {},
@@ -162,29 +177,32 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '600',
     color: '#000',
-    marginBottom: 10,
+    marginBottom: 8,
     textAlign: 'center',
   },
   message: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#6B7280',
-    lineHeight: 22,
-    marginBottom: 24,
+    lineHeight: 18,
+    marginBottom: 20,
     textAlign: 'center',
   },
   actionButton: {
     width: '100%',
-    paddingVertical: 13,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#34C759',
+    backgroundColor: '#007AFF',
+    borderWidth: 0.5,
+    borderColor: '#A0A0A0',
   },
   actionButtonError: {
     backgroundColor: '#FF3B30',
+    borderColor: '#FF3B30',
   },
   actionButtonText: {
     color: '#fff',
