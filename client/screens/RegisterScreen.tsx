@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ImageBackground, ActivityIndicator, useWindowDimensions, KeyboardAvoidingView, ScrollView, Platform } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ImageBackground, ActivityIndicator, useWindowDimensions, KeyboardAvoidingView, ScrollView, Platform, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
@@ -33,6 +33,10 @@ export const RegisterScreen: React.FC<Props> = ({ onNavigate }) => {
   const [modalTitle, setModalTitle] = useState('');
   const [modalMessage, setModalMessage] = useState('');
   const { register, isLoading, commitAuth, pendingAuth } = useAuth();
+  
+  // Refs for input fields
+  const emailInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
 
   // Handle modal dismiss - commit auth if it was a success
   const handleModalDismiss = () => {
@@ -174,8 +178,12 @@ export const RegisterScreen: React.FC<Props> = ({ onNavigate }) => {
                     onChangeText={handleNameChange}
                     autoCapitalize="words"
                     error={fieldErrors.name}
+                    returnKeyType="next"
+                    onSubmitEditing={() => emailInputRef.current?.focus()}
+                    blurOnSubmit={false}
                   />
                   <Input
+                    ref={emailInputRef}
                     placeholder="Enter your email address"
                     value={email}
                     onChangeText={handleEmailChange}
@@ -183,13 +191,19 @@ export const RegisterScreen: React.FC<Props> = ({ onNavigate }) => {
                     autoCapitalize="none"
                     error={fieldErrors.email}
                     autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordInputRef.current?.focus()}
+                    blurOnSubmit={false}
                   />
                   <Input
+                    ref={passwordInputRef}
                     placeholder="Enter your password"
                     value={password}
                     onChangeText={handlePasswordChange}
                     secureTextEntry
                     error={fieldErrors.password}
+                    returnKeyType="done"
+                    onSubmitEditing={handleRegister}
                   />
                 </View>
                 

@@ -6,7 +6,6 @@ import { BluetoothIndicator } from '../LocationTab/BluetoothIndicator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Friend } from '../../types/friends';
 import { useAuth } from '../../context/AuthContext';
-import { BluetoothDeviceManager } from '../BluetoothDeviceManager';
 
 interface DeviceTabProps {
   friends: Friend[];
@@ -52,40 +51,31 @@ export const DeviceTab: React.FC<DeviceTabProps> = ({
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.mapWrapper}>
-        <MapView
-          style={StyleSheet.absoluteFill}
-          initialRegion={initialRegion}
-          showsUserLocation={sharedLocationPermissionGranted}
-          userLocation={sharedUserLocation}
-          userProfilePicture={user?.profilePicture}
-          userName={user?.name}
-          markers={friendMarkers}
-        />
-  
-        {sharedLocationPermissionGranted && (
-          <View style={[styles.overlayTop, { top: insets.top + 8 }] as any}>
-            <StatusChip
-              friendCount={onlineFriendsCount}
-              onDropdownPress={() => console.log('Dropdown pressed')}
-            />
-            <BluetoothIndicator isConnected={isBluetoothConnected} />
-          </View>
-        )}
-      </View>
-        
-      <View style={styles.bluetoothSection}>
-        <BluetoothDeviceManager />
-      </View>
+    <View style={styles.mapWrapper}>
+      <MapView
+        style={StyleSheet.absoluteFill}
+        initialRegion={initialRegion}
+        showsUserLocation={sharedLocationPermissionGranted}
+        userLocation={sharedUserLocation}
+        userProfilePicture={user?.profilePicture}
+        userName={user?.name}
+        markers={friendMarkers}
+      />
+
+      {sharedLocationPermissionGranted && (
+        <View style={[styles.overlayTop, { top: insets.top + 8 }]}>
+          <StatusChip
+            friendCount={onlineFriendsCount}
+            onDropdownPress={() => console.log('Dropdown pressed')}
+          />
+          <BluetoothIndicator isConnected={isBluetoothConnected} />
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   mapWrapper: {
     flex: 1,
     borderRadius: 0,
@@ -94,10 +84,6 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     backgroundColor: '#F8FAFC',
     position: 'relative',
-  },
-  bluetoothSection: {
-    padding: 16,
-    backgroundColor: '#f5f5f5',
   },
   overlayTop: {
     position: 'absolute',
@@ -108,6 +94,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 3,
     paddingHorizontal: 24,
-  }
+  },
 });
 

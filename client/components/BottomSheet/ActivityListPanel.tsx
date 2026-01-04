@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.XL * 2,
+    paddingVertical: SPACING.XL,
   },
   emptyStateText: {
     fontSize: 16,

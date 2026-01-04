@@ -5,11 +5,13 @@ interface InputProps extends TextInputProps {
   error?: string;
 }
 
-export const Input: React.FC<InputProps> = ({ error, style, ...rest }) => (
-  <ResponsiveInput error={error} style={style} {...rest} />
-);
+export const Input = React.forwardRef<TextInput, InputProps>(({ error, style, ...rest }, ref) => (
+  <ResponsiveInput ref={ref} error={error} style={style} {...rest} />
+));
 
-const ResponsiveInput: React.FC<InputProps> = ({ error, style, ...rest }) => {
+Input.displayName = 'Input';
+
+const ResponsiveInput = React.forwardRef<TextInput, InputProps>(({ error, style, ...rest }, ref) => {
   const { width } = useWindowDimensions();
   const isSmall = width < 360;
   const isMedium = width < 400;
@@ -36,6 +38,7 @@ const ResponsiveInput: React.FC<InputProps> = ({ error, style, ...rest }) => {
   return (
     <View style={styles.container}>
       <TextInput
+        ref={ref}
         style={[styles.input, dynamicInput, !!error && styles.inputError, style]}
         placeholderTextColor="#b4bbc5"
         {...rest}
@@ -43,7 +46,9 @@ const ResponsiveInput: React.FC<InputProps> = ({ error, style, ...rest }) => {
       {!!error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
-};
+});
+
+ResponsiveInput.displayName = 'ResponsiveInput';
 
 const styles = StyleSheet.create({
   container: {

@@ -25,9 +25,10 @@ import { useQuickActionMode } from '../hooks/useQuickActionMode';
 import { useQuickActionNotifications } from '../context/QuickActionNotificationContext';
 import type { QuickActionKey, HomeStatus } from '../types/quickActions';
 import { QuickActionButton } from '../components/QuickActions';
-import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, FriendRequestsPanel, FriendDetailsPanel, RoutePanel, ContactDetailsPanel, ActivityListPanel, DevicePanel } from '../components/BottomSheet';
+import { SOSModePanel, LocationModePanel, MessageModePanel, FriendsListPanel, FriendRequestsPanel, FriendDetailsPanel, RoutePanel, ContactDetailsPanel, ActivityListPanel, DevicePanel, DeviceScanModal } from '../components/BottomSheet';
 import { ShareLocationModal } from '../components/BottomSheet/ShareLocationModal';
 import { ShareWithEveryoneModal } from '../components/BottomSheet/ShareWithEveryoneModal';
+import { useBluetooth } from '../context/BluetoothContext';
 import {
   StatusChip,
   BluetoothIndicator,
@@ -50,6 +51,7 @@ import { reverseGeocode } from '../utils/geocoding';
 import { initializeWebSocket, disconnectWebSocket, setOnFriendRequestReceived, setOnFriendRequestResponded, emitSafeHome, emitQuickActionMessage } from '../services/webSocketService';
 import { getNearbyUsers, NearbyUser } from '../services/nearbyUsersService';
 import { QuickActionType } from '../components/LocationTab/HomeNotification';
+import { PermissionsOnboardingModal } from '../components/PermissionsOnboardingModal';
 
 const backgroundImage = require('../assets/background.png');
 const { width, height } = Dimensions.get('window');
@@ -91,6 +93,8 @@ const LocationTab: React.FC<{
   friends?: FriendWithDistance[];
   combinedMarkers?: Marker[];
   actionType?: QuickActionType;
+  focusLocation?: { latitude: number; longitude: number } | null;
+  isBluetoothConnected?: boolean;
 }> = ({
   showHomeNotification = false,
   homeNotificationAnim,
@@ -103,6 +107,8 @@ const LocationTab: React.FC<{
   friends = [],
   combinedMarkers = [],
   actionType = 'safeHome',
+  focusLocation,
+  isBluetoothConnected = false,
 }) => {
   const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -124,17 +130,39 @@ const LocationTab: React.FC<{
   const [showLocationPermissionModal, setShowLocationPermissionModal] = useState(false);
   const [locationPermissionMessage, setLocationPermissionMessage] = useState<string>('');
   const [isRequestingLocation, setIsRequestingLocation] = useState(true);
-  
-  // Bluetooth state
-  const [isBluetoothConnected, setIsBluetoothConnected] = useState(false); // false = red, true = green
 
   // Calculate online friends count (real-time)
   const onlineFriendsCount = useMemo(() => {
     return (friends || []).filter(friend => friend.status === 'online').length;
   }, [friends]);
 
+  // MapView ref for focusing on locations
+  const mapViewRef = useRef<any>(null);
+  
+  // Focus map on location when focusLocation changes (e.g., SOS alert)
+  useEffect(() => {
+    if (focusLocation && mapViewRef.current) {
+      console.log('[LocationTab] Focusing map on location:', focusLocation);
+      mapViewRef.current.setRegion({
+        latitude: focusLocation.latitude,
+        longitude: focusLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+    }
+  }, [focusLocation]);
+
   // Calculate initial region - always call useMemo to satisfy Rules of Hooks
   const calculatedInitialRegion = useMemo(() => {
+    // If focusLocation is set (e.g., SOS alert), focus on that first
+    if (focusLocation) {
+      return {
+        latitude: focusLocation.latitude,
+        longitude: focusLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+    }
     // ALWAYS focus on user location when available (LocationTab default view)
     // Friend markers will still be visible on the map
     if (userLocation) {
@@ -153,7 +181,7 @@ const LocationTab: React.FC<{
       latitudeDelta: 0.1,
       longitudeDelta: 0.1,
     };
-  }, [userLocation]);
+  }, [userLocation, focusLocation]);
 
   // Use shared initial region if provided, otherwise use calculated region
   const initialRegion = sharedInitialRegion || calculatedInitialRegion;
@@ -343,6 +371,7 @@ const LocationTab: React.FC<{
       </View>
         ) : (
           <MapView
+            ref={mapViewRef}
             style={StyleSheet.absoluteFill}
             initialRegion={initialRegion}
             showsUserLocation={locationPermissionGranted}
@@ -401,6 +430,9 @@ export const HomeScreen: React.FC = () => {
   const { activities, refreshActivities } = useActivity();
   const websocketInitializedRef = useRef(false);
   
+  // Permissions onboarding modal state
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  
   // Shared user location state - used by all tabs for consistent map view
   const [sharedUserLocation, setSharedUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [sharedLocationPermissionGranted, setSharedLocationPermissionGranted] = useState(false);
@@ -424,6 +456,34 @@ export const HomeScreen: React.FC = () => {
 
   // Nearby users state (when shareWithEveryone is enabled)
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
+
+  // SOS alerts received state - stores active SOS alerts with sender location
+  interface ReceivedSOSAlert {
+    alertId: string;
+    userId: string;
+    userName: string;
+    latitude: number;
+    longitude: number;
+    locationName?: string; // Readable location name (e.g., "123 Main St, New York, NY")
+    message?: string;
+    receivedAt: number; // timestamp
+  }
+  const [receivedSOSAlerts, setReceivedSOSAlerts] = useState<ReceivedSOSAlert[]>([]);
+  
+  // Focus location state - used to focus map on a specific location (e.g., SOS alert)
+  const [focusLocation, setFocusLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Cleanup old SOS alerts (older than 1 hour)
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      const oneHourAgo = Date.now() - 3600000; // 1 hour in milliseconds
+      setReceivedSOSAlerts((prev) => 
+        prev.filter((alert) => alert.receivedAt > oneHourAgo)
+      );
+    }, 60000); // Check every minute
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   // State for Share Location confirmation modal
   const [showShareLocationModal, setShowShareLocationModal] = useState(false);
@@ -628,7 +688,119 @@ export const HomeScreen: React.FC = () => {
   };
   
   // Bluetooth state (shared across tabs)
-  const [isBluetoothConnected] = useState(false);
+  const { isConnected: isBluetoothConnected, sendSOSAlarm, onDeviceSOSTriggered } = useBluetooth();
+  
+  // Handler for triggering BLE device when receiving SOS notification
+  const handleReceivedSOSAlert = useCallback(async () => {
+    if (isBluetoothConnected) {
+      try {
+        console.log('[HomeScreen] Received SOS alert - triggering BLE device siren');
+        const success = await sendSOSAlarm(true);
+        if (success) {
+          console.log('[HomeScreen] BLE device siren activated for received SOS');
+          // Auto-stop after 30 seconds
+          setTimeout(async () => {
+            await sendSOSAlarm(false);
+            console.log('[HomeScreen] BLE device siren stopped after 30 seconds');
+          }, 30000);
+        } else {
+          console.warn('[HomeScreen] Failed to activate BLE device siren for received SOS');
+        }
+      } catch (error) {
+        console.error('[HomeScreen] Error activating BLE device siren for received SOS:', error);
+      }
+    } else {
+      console.log('[HomeScreen] No BLE device connected, skipping siren activation for received SOS');
+    }
+  }, [isBluetoothConnected, sendSOSAlarm]);
+
+  // Handler for when EVA device is physically pulled (device triggers SOS)
+  const handleDeviceSOSTriggered = useCallback(async () => {
+    console.log('[HomeScreen] ⚠️ EVA DEVICE PULLED - Device triggered SOS!');
+    
+    // Send SOS alert to emergency contacts with current location
+    try {
+      if (token && sharedUserLocation) {
+        const { sendSOS: sendSOSAPI } = await import('../services/sosService');
+        await sendSOSAPI(token, {
+          latitude: sharedUserLocation.latitude,
+          longitude: sharedUserLocation.longitude,
+          message: 'Emergency SOS Alert - EVA Device Triggered',
+        });
+        console.log('[HomeScreen] SOS alert sent to emergency contacts (device-triggered)');
+        
+        // Show visual feedback to user
+        Alert.alert(
+          'SOS Alert Sent',
+          'Your EVA device was activated. Emergency contacts have been notified with your location.',
+          [{ text: 'OK' }]
+        );
+        
+        // Refresh activities
+        setTimeout(() => {
+          refreshActivities();
+        }, 1000);
+      } else {
+        console.warn('[HomeScreen] Cannot send SOS - missing token or location');
+        Alert.alert(
+          'SOS Device Activated',
+          'Your EVA device was activated, but we couldn\'t send your location. Please ensure location services are enabled.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('[HomeScreen] Error sending device-triggered SOS:', error);
+      Alert.alert(
+        'Error',
+        'Your EVA device was activated, but there was an error sending the alert. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  }, [token, sharedUserLocation, refreshActivities]);
+
+  // Register device SOS listener
+  useEffect(() => {
+    console.log('[HomeScreen] Registering device SOS listener');
+    const cleanup = onDeviceSOSTriggered(handleDeviceSOSTriggered);
+    return () => {
+      console.log('[HomeScreen] Cleaning up device SOS listener');
+      cleanup();
+    };
+  }, [onDeviceSOSTriggered, handleDeviceSOSTriggered]);
+  
+  // Device scan modal state
+  const [showDeviceScanModal, setShowDeviceScanModal] = useState(false);
+
+  // Check if permissions onboarding should be shown (first launch after login)
+  useEffect(() => {
+    const checkPermissionsOnboarding = async () => {
+      if (!user || !token) return;
+
+      try {
+        const hasSeenOnboarding = await AsyncStorage.getItem('permissions_onboarding_completed');
+        if (!hasSeenOnboarding) {
+          // Show modal after a short delay to ensure UI is ready
+          setTimeout(() => {
+            setShowPermissionsModal(true);
+          }, 500);
+        }
+      } catch (error) {
+        console.error('[HomeScreen] Error checking permissions onboarding:', error);
+      }
+    };
+
+    checkPermissionsOnboarding();
+  }, [user, token]);
+
+  const handlePermissionsOnboardingComplete = async () => {
+    try {
+      await AsyncStorage.setItem('permissions_onboarding_completed', 'true');
+      setShowPermissionsModal(false);
+    } catch (error) {
+      console.error('[HomeScreen] Error saving permissions onboarding:', error);
+      setShowPermissionsModal(false);
+    }
+  };
   
   // Centralized state management using reducer
   const {
@@ -653,12 +825,13 @@ export const HomeScreen: React.FC = () => {
   useEffect(() => {
     if (user?.settings) {
       console.log('[HomeScreen] Initializing quick action state with user settings:', user.settings);
-      setShareMyLocation(user.settings.shareLocation);
-      setShareWithEveryone(user.settings.shareWithEveryone);
+      // Default to true if shareLocation is not set
+      setShareMyLocation(user.settings.shareLocation ?? true);
+      setShareWithEveryone(user.settings.shareWithEveryone ?? false);
     }
   }, [user?.settings, setShareMyLocation, setShareWithEveryone]);
 
-  // Combined markers (friends + nearby users) for map display
+  // Combined markers (friends + nearby users + SOS alerts) for map display
   const combinedMarkers = useMemo(() => {
     const markers: Marker[] = [];
 
@@ -691,8 +864,23 @@ export const HomeScreen: React.FC = () => {
       });
     }
 
+    // Add SOS alert markers (with special status for visual distinction)
+    receivedSOSAlerts.forEach((sosAlert) => {
+      markers.push({
+        id: `sos_${sosAlert.alertId}`,
+        coordinate: {
+          latitude: sosAlert.latitude,
+          longitude: sosAlert.longitude,
+        },
+        name: sosAlert.userName,
+        status: 'sos_alert', // Special status for SOS alerts
+        profilePicture: undefined, // Will use special SOS indicator instead
+        locationName: sosAlert.locationName, // Include readable location name
+      } as Marker & { locationName?: string });
+    });
+
     return markers;
-  }, [friendsWithDistance, nearbyUsers, shareWithEveryone]);
+  }, [friendsWithDistance, nearbyUsers, shareWithEveryone, receivedSOSAlerts]);
   
   // Use custom hooks for complex logic
   const {
@@ -900,6 +1088,8 @@ export const HomeScreen: React.FC = () => {
   };
 
   // SOS button handlers
+  const sosTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   const handleSOSPress = () => {
     activateMode('SOS');
     // Reset SOS animation state when toggling
@@ -909,25 +1099,28 @@ export const HomeScreen: React.FC = () => {
   const handleSOSPressIn = () => {
     setSOSHolding(true);
     startPulse();
+    
+    // Start timer to send SOS after 2 seconds of holding
+    sosTimerRef.current = setTimeout(() => {
+      console.log('[HomeScreen] Hold duration reached - sending SOS');
+      sendSOS();
+    }, 2000); // 2 seconds hold time
   };
 
   const handleSOSPressOut = () => {
-    // Don't cancel if SOS was already sent
-    if (sosSentRef.current || sosSent) {
-      return;
-    }
-    
+    // Always stop pulse animation first
     stopPulse();
     
-    // If user was holding, send SOS when they release
-    if (isHoldingSOS) {
-      sendSOS();
+    // Cancel the timer if user releases before 2 seconds
+    if (sosTimerRef.current) {
+      clearTimeout(sosTimerRef.current);
+      sosTimerRef.current = null;
     }
     
     setSOSHolding(false);
   };
 
-  const sendSOS = () => {
+  const sendSOS = async () => {
     // Prevent multiple calls
     if (sosSentRef.current || sosSent) {
       return;
@@ -937,8 +1130,95 @@ export const HomeScreen: React.FC = () => {
     markSOSSent();
     setSOSSent(true);
     
-    // TODO: Implement actual SOS sending logic
-    console.log('SOS sent!');
+    console.log('[HomeScreen] SOS triggered!');
+    
+    // Send SOS to friends via API
+    let recipientCount = 0;
+    let sosSentSuccessfully = false;
+    
+    try {
+      // Check if we have required data
+      if (!token) {
+        Alert.alert(
+          'Error',
+          'Unable to send SOS alert. Please make sure you are logged in.',
+          [{ text: 'OK' }]
+        );
+      } else if (!sharedUserLocation) {
+        Alert.alert(
+          'Error',
+          'Unable to send SOS alert. Please enable location sharing to send alerts.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Both token and location are available, send SOS
+        const { sendSOS: sendSOSAPI } = await import('../services/sosService');
+        const response = await sendSOSAPI(token, {
+          latitude: sharedUserLocation.latitude,
+          longitude: sharedUserLocation.longitude,
+          message: 'Emergency SOS Alert',
+        });
+        recipientCount = response.alert.recipientsCount;
+        sosSentSuccessfully = true;
+        console.log('[HomeScreen] SOS alert sent to', recipientCount, 'recipients');
+        
+        // Show alert with recipient count
+        if (recipientCount === 0) {
+          Alert.alert(
+            '⚠️ No Recipients',
+            'Your SOS alert could not be sent because you have no friends or nearby users available. Please add friends or enable "Share With Everyone" to send SOS alerts.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert(
+            '🚨 SOS Sent',
+            `Your emergency alert has been sent to ${recipientCount} ${recipientCount === 1 ? 'person' : 'people'}.`,
+            [{ text: 'OK' }]
+          );
+        }
+        
+        // Refresh activities
+        setTimeout(() => {
+          refreshActivities();
+        }, 1000);
+      }
+    } catch (error: any) {
+      console.error('[HomeScreen] Error sending SOS to friends:', error);
+      
+      // Check if error is due to no recipients
+      const errorMessage = error?.message || '';
+      if (errorMessage.includes('No recipients available') || errorMessage.includes('No recipients')) {
+        Alert.alert(
+          '⚠️ No Recipients',
+          'Your SOS alert could not be sent because you have no friends or nearby users available. Please add friends or enable "Share With Everyone" to send SOS alerts.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Error',
+          'Failed to send SOS alert. Please check your connection and try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    }
+    
+    // Trigger BLE device siren if connected
+    if (isBluetoothConnected) {
+      try {
+        console.log('[HomeScreen] Triggering BLE device siren');
+        const success = await sendSOSAlarm(true);
+        if (success) {
+          console.log('[HomeScreen] BLE device siren activated');
+        } else {
+          console.warn('[HomeScreen] Failed to activate BLE device siren');
+        }
+      } catch (error) {
+        console.error('[HomeScreen] Error activating BLE device siren:', error);
+      }
+    } else {
+      console.log('[HomeScreen] No BLE device connected, skipping siren activation');
+    }
+    
     // Don't exit SOS mode - user must click SOS button again to exit
     setSOSHolding(false);
 };
@@ -949,6 +1229,10 @@ export const HomeScreen: React.FC = () => {
     return () => {
       pulseAnim1.stopAnimation();
       pulseAnim2.stopAnimation();
+      // Clear SOS timer if component unmounts
+      if (sosTimerRef.current) {
+        clearTimeout(sosTimerRef.current);
+      }
     };
   }, [pulseAnim1, pulseAnim2]);
 
@@ -1078,6 +1362,47 @@ export const HomeScreen: React.FC = () => {
           if (loadPendingRequestsCountRef.current) {
             loadPendingRequestsCountRef.current();
           }
+        } else if (data.eventType === 'sos_alert') {
+          console.log('[HomeScreen] SOS alert notification received from friend');
+          
+          // Extract SOS alert data from notification with proper typing
+          const alertId = typeof data.alertId === 'string' ? data.alertId : `sos_${Date.now()}`;
+          const userId = typeof data.userId === 'string' ? data.userId : '';
+          const userName = typeof data.userName === 'string' ? data.userName : 'Someone';
+          const latitude = typeof data.latitude === 'number' ? data.latitude : null;
+          const longitude = typeof data.longitude === 'number' ? data.longitude : null;
+          const locationName = typeof data.locationName === 'string' ? data.locationName : undefined;
+          const message = typeof data.message === 'string' ? data.message : undefined;
+          
+          // Validate location data
+          if (latitude !== null && longitude !== null && userId) {
+            const sosData: ReceivedSOSAlert = {
+              alertId,
+              userId,
+              userName,
+              latitude,
+              longitude,
+              locationName,
+              message,
+              receivedAt: Date.now(),
+            };
+            
+            console.log('[HomeScreen] Adding SOS alert marker to map:', sosData);
+            
+            // Add SOS alert to state (will appear on map)
+            setReceivedSOSAlerts((prev) => {
+              // Remove any existing alert from the same user (only show latest)
+              const filtered = prev.filter((alert) => alert.userId !== sosData.userId);
+              return [...filtered, sosData];
+            });
+          } else {
+            console.warn('[HomeScreen] SOS alert missing location data:', { latitude, longitude, userId });
+          }
+          
+          // Trigger BLE device siren for received SOS
+          if (handleReceivedSOSAlertRef.current) {
+            handleReceivedSOSAlertRef.current();
+          }
         }
       },
       (response) => {
@@ -1095,6 +1420,58 @@ export const HomeScreen: React.FC = () => {
             setActiveTabRef.current('FRIENDS');
             setShowFriendRequestsRef.current(true);
           }
+        } else if (data.eventType === 'sos_alert') {
+          console.log('[HomeScreen] SOS alert notification tapped');
+          
+          // Extract SOS alert data from notification with proper typing
+          const alertId = typeof data.alertId === 'string' ? data.alertId : `sos_${Date.now()}`;
+          const userId = typeof data.userId === 'string' ? data.userId : '';
+          const userName = typeof data.userName === 'string' ? data.userName : 'Someone';
+          const latitude = typeof data.latitude === 'number' ? data.latitude : null;
+          const longitude = typeof data.longitude === 'number' ? data.longitude : null;
+          const locationName = typeof data.locationName === 'string' ? data.locationName : undefined;
+          const message = typeof data.message === 'string' ? data.message : undefined;
+          
+          // Validate and add SOS alert if location data exists
+          if (latitude !== null && longitude !== null && userId) {
+            const sosData: ReceivedSOSAlert = {
+              alertId,
+              userId,
+              userName,
+              latitude,
+              longitude,
+              locationName,
+              message,
+              receivedAt: Date.now(),
+            };
+            
+            setReceivedSOSAlerts((prev) => {
+              // Remove any existing alert from the same user (only show latest)
+              const filtered = prev.filter((alert) => alert.userId !== sosData.userId);
+              return [...filtered, sosData];
+            });
+            
+            // Set focus location to SOS location (will focus map on this location)
+            setFocusLocation({
+              latitude: sosData.latitude,
+              longitude: sosData.longitude,
+            });
+            
+            // Clear focus after a delay so it doesn't interfere with user's map navigation
+            setTimeout(() => {
+              setFocusLocation(null);
+            }, 2000);
+          }
+          
+          // Navigate to Location tab to show the SOS alert
+          if (setActiveTabRef.current) {
+            setActiveTabRef.current('LOCATION');
+          }
+          
+          // Trigger BLE device siren (in case it wasn't triggered when notification was received)
+          if (handleReceivedSOSAlertRef.current) {
+            handleReceivedSOSAlertRef.current();
+          }
         }
       }
     );
@@ -1107,6 +1484,12 @@ export const HomeScreen: React.FC = () => {
   const lastRequestsLoadRef = useRef<number>(0);
   const hasLoadedFriendsRef = useRef(false);
   const friendsTabActiveRef = useRef(false);
+  const handleReceivedSOSAlertRef = useRef(handleReceivedSOSAlert);
+  
+  // Update ref when callback changes
+  useEffect(() => {
+    handleReceivedSOSAlertRef.current = handleReceivedSOSAlert;
+  }, [handleReceivedSOSAlert]);
 
   // Reset friend requests panel and selected friend when navigating away from friends tab
   useEffect(() => {
@@ -1585,6 +1968,8 @@ export const HomeScreen: React.FC = () => {
           friends={friendsWithDistance}
           combinedMarkers={combinedMarkers}
           actionType={actionType}
+          focusLocation={focusLocation}
+          isBluetoothConnected={isBluetoothConnected}
         />
       );
       case 'FRIENDS': return (
@@ -1632,6 +2017,8 @@ export const HomeScreen: React.FC = () => {
           sharedInitialRegion={sharedInitialRegion}
           friends={friendsWithDistance}
           actionType={actionType}
+          focusLocation={focusLocation}
+          isBluetoothConnected={isBluetoothConnected}
         />
       );
     }
@@ -1749,11 +2136,7 @@ export const HomeScreen: React.FC = () => {
              {/* Device Panel - Shown when Device tab is active */}
              {activeTab === 'DEVICE' && (
                <DevicePanel
-                 isBluetoothConnected={isBluetoothConnected}
-                 batteryLevel={85}
-                 onAddDevice={() => console.log('Add device pressed')}
-                 onTestSirenToggle={(enabled) => console.log('Test siren toggled:', enabled)}
-                 onConnectDevice={() => console.log('Connect device pressed')}
+                 onShowScanModal={() => setShowDeviceScanModal(true)}
                />
              )}
 
@@ -1866,6 +2249,21 @@ export const HomeScreen: React.FC = () => {
           userName={user.name}
         />
       )}
+      
+      {/* Device Scan Modal */}
+      <DeviceScanModal
+        visible={showDeviceScanModal}
+        onClose={() => setShowDeviceScanModal(false)}
+        onDeviceConnected={() => {
+          Alert.alert('Success', 'Device connected successfully!');
+        }}
+      />
+      
+      {/* Permissions Onboarding Modal */}
+      <PermissionsOnboardingModal
+        visible={showPermissionsModal}
+        onComplete={handlePermissionsOnboardingComplete}
+      />
     </ImageBackground>
   );
 };

@@ -65,6 +65,25 @@ export const requestLocationPermission = async (): Promise<LocationPermissionSta
 };
 
 /**
+ * Get current location permission status
+ */
+export const getLocationPermissionStatus = async (): Promise<LocationPermissionStatus> => {
+  try {
+    const { status, canAskAgain } = await Location.getForegroundPermissionsAsync();
+    return {
+      granted: status === 'granted',
+      canAskAgain: canAskAgain ?? true,
+    };
+  } catch (error) {
+    console.error('Error checking location permission:', error);
+    return {
+      granted: false,
+      canAskAgain: true,
+    };
+  }
+};
+
+/**
  * Get current location with error handling
  * Optimized for Android: tries last known location first for faster response
  */

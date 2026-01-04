@@ -196,31 +196,62 @@ export const updateUserSettings = async (
 };
 
 /**
- * Delete user account (soft delete)
+ * Delete user account (hard delete - full data removal for App Store/Play Store compliance)
+ * Deletes all associated data including:
+ * - User account
+ * - Friend relationships
+ * - Location history
+ * - SOS alerts
+ * - Activities
+ * - Messages
+ * - Devices
+ * - Notification subscriptions
  */
 export const deleteUserAccount = async (userId: string): Promise<void> => {
-  // Soft delete - mark as inactive and anonymize
-  const updatedUser = await User.findByIdAndUpdate(
-    userId,
-    {
-      isActive: false,
-      name: 'Deleted User',
-      email: `deleted_${Date.now()}@deleted.local`,
-      phone: undefined,
-      profilePicture: undefined,
-      homeAddress: undefined,
-      settings: {
-        shareLocation: false,
-        shareWithEveryone: false,
-        notificationsEnabled: false,
-      },
-    },
-    { new: true }
-  );
+  const userObjectId = new Types.ObjectId(userId);
 
-  if (!updatedUser) {
+  // Verify user exists
+  const user = await User.findById(userObjectId);
+  if (!user) {
     throw new Error('User not found');
   }
+
+  // Import models dynamically to avoid circular dependencies
+  const Friend = (await import('../models/Friend')).default;
+  const Location = (await import('../models/Location')).default;
+  const SOSAlert = (await import('../models/SOSAlert')).default;
+  const Activity = (await import('../models/Activity')).default;
+  const Message = (await import('../models/Message')).default;
+  const Device = (await import('../models/Device')).default;
+  const { NotificationSubscription } = await import('../models/NotificationSubscription');
+
+  // Delete all associated data in parallel for better performance
+  await Promise.all([
+    // Delete friend relationships (both as requester and recipient)
+    Friend.deleteMany({
+      $or: [
+        { requesterId: userObjectId },
+        { recipientId: userObjectId },
+      ],
+    }),
+    // Delete location history
+    Location.deleteMany({ userId: userObjectId }),
+    // Delete SOS alerts
+    SOSAlert.deleteMany({ userId: userObjectId }),
+    // Delete activities
+    Activity.deleteMany({ userId: userObjectId }),
+    // Delete messages
+    Message.deleteMany({ userId: userObjectId }),
+    // Delete devices
+    Device.deleteMany({ userId: userObjectId }),
+    // Delete notification subscriptions
+    NotificationSubscription.deleteMany({ userId: userObjectId }),
+  ]);
+
+  // Finally, delete the user account itself
+  await User.findByIdAndDelete(userObjectId);
+
+  console.log(`[profileService] User account and all associated data deleted: ${userId}`);
 };
 
 /**

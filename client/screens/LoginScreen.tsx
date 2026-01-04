@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ImageBackground, ActivityIndicator, Platform, useWindowDimensions, KeyboardAvoidingView, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ImageBackground, ActivityIndicator, Platform, useWindowDimensions, KeyboardAvoidingView, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
@@ -35,6 +35,9 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
   const [modalMessage, setModalMessage] = useState('');
   
   const { login, isLoading } = useAuth();
+  
+  // Refs for input fields
+  const passwordInputRef = useRef<TextInput>(null);
 
   // Handle modal dismiss - commit auth if it was a success
   const handleModalDismiss = useCallback(() => {
@@ -158,13 +161,19 @@ export const LoginScreen: React.FC<Props> = ({ onNavigate }) => {
                     autoCapitalize="none"
                     error={fieldErrors.email}
                     autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordInputRef.current?.focus()}
+                    blurOnSubmit={false}
                   />
                   <Input
+                    ref={passwordInputRef}
                     placeholder="Enter your password"
                     value={password}
                     onChangeText={handlePasswordChange}
                     secureTextEntry
                     error={fieldErrors.password}
+                    returnKeyType="go"
+                    onSubmitEditing={handleLogin}
                   />
                   <TouchableOpacity style={styles.forgotWrapper} onPress={() => onNavigate('FORGOT_PASSWORD')}>
                     <Text style={styles.forgot}>Forgot password?</Text>

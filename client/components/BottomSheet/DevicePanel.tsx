@@ -1,31 +1,68 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Switch, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '../../constants/theme';
+import { useBluetooth } from '../../context/BluetoothContext';
+import { ToggleSwitch } from '../ToggleSwitch';
 
 interface DevicePanelProps {
-  isBluetoothConnected: boolean;
-  batteryLevel?: number; // 0-100
-  onAddDevice?: () => void;
-  onTestSirenToggle?: (enabled: boolean) => void;
-  onConnectDevice?: () => void;
+  onShowScanModal: () => void;
 }
 
 /**
  * Device Panel - Displays device status and controls
  */
 export const DevicePanel: React.FC<DevicePanelProps> = ({
-  isBluetoothConnected,
-  batteryLevel = 85,
-  onAddDevice,
-  onTestSirenToggle,
-  onConnectDevice,
+  onShowScanModal,
 }) => {
+  const { 
+    isConnected, 
+    batteryLevel, 
+    mockMode, 
+    setMockMode, 
+    sendTestSiren, 
+    disconnect 
+  } = useBluetooth();
+  
   const [testSirenEnabled, setTestSirenEnabled] = useState(false);
 
-  const handleTestSirenToggle = (value: boolean) => {
+  const handleTestSirenToggle = async (value: boolean) => {
     setTestSirenEnabled(value);
-    onTestSirenToggle?.(value);
+    
+    try {
+      const success = await sendTestSiren(value);
+      if (!success) {
+        // Revert toggle if command failed
+        setTestSirenEnabled(!value);
+        Alert.alert('Error', 'Failed to toggle test siren. Please try again.');
+      }
+    } catch (error) {
+      console.error('[DevicePanel] Test siren error:', error);
+      setTestSirenEnabled(!value);
+      Alert.alert('Error', 'Failed to toggle test siren. Please try again.');
+    }
+  };
+
+  const handleDisconnect = async () => {
+    Alert.alert(
+      'Disconnect Device',
+      'Are you sure you want to disconnect from your SOS alarm device?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await disconnect();
+            } catch (error) {
+              console.error('[DevicePanel] Disconnect error:', error);
+              Alert.alert('Error', 'Failed to disconnect. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -33,36 +70,53 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Device</Text>
+        {mockMode && (
+          <View style={styles.mockBadge}>
+            <MaterialCommunityIcons name="test-tube" size={16} color={COLORS.BACKGROUND_WHITE} />
+            <Text style={styles.mockBadgeText}>Mock</Text>
+          </View>
+        )}
+        <View style={{ flex: 1 }} />
+        {isConnected ? (
+          <TouchableOpacity
+            style={[styles.addButton, styles.disconnectButton]}
+            onPress={handleDisconnect}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="close" size={20} color={COLORS.ERROR} />
+          </TouchableOpacity>
+        ) : (
         <TouchableOpacity
           style={styles.addButton}
-          onPress={onAddDevice}
+            onPress={onShowScanModal}
           activeOpacity={0.7}
         >
           <MaterialCommunityIcons name="plus" size={20} color={COLORS.TEXT_PRIMARY} />
         </TouchableOpacity>
+        )}
       </View>
 
       {/* Bluetooth Status Container */}
       <View style={styles.bluetoothContainer}>
         <View style={[
           styles.bluetoothIconContainer,
-          { backgroundColor: isBluetoothConnected ? '#E6F7E6' : '#FFE6E6' }
+          { backgroundColor: isConnected ? '#E6F7E6' : '#FFE6E6' }
         ]}>
           <MaterialCommunityIcons
             name="bluetooth"
             size={32}
-            color={isBluetoothConnected ? COLORS.SUCCESS : COLORS.ERROR}
+            color={isConnected ? COLORS.SUCCESS : COLORS.ERROR}
           />
         </View>
         <Text style={styles.statusText}>
-          {isBluetoothConnected ? 'Connected' : 'Disconnected'}
+          {isConnected ? 'Connected' : 'Disconnected'}
         </Text>
         
         {/* Connect Device Button - Only show if disconnected, inside container */}
-        {!isBluetoothConnected && (
+        {!isConnected && (
           <TouchableOpacity
             style={styles.connectDeviceContainer}
-            onPress={onConnectDevice}
+            onPress={onShowScanModal}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons
@@ -75,7 +129,7 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
         )}
 
         {/* Battery Level - Only show if connected, inside container */}
-        {isBluetoothConnected && (
+        {isConnected && batteryLevel !== null && (
           <View style={styles.batteryContainer}>
             <MaterialCommunityIcons
               name="battery-charging"
@@ -90,23 +144,12 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
       </View>
 
       {/* Test Siren Container - Only show if connected, outside container */}
-      {isBluetoothConnected && (
+      {isConnected && (
         <View style={styles.testSirenContainer}>
-          <View style={styles.testSirenLeft}>
-            <View style={styles.exclamationCircle}>
-              <MaterialCommunityIcons
-                name="exclamation"
-                size={16}
-                color={COLORS.BACKGROUND_WHITE}
-              />
-            </View>
-            <Text style={styles.testSirenText}>Test siren</Text>
-          </View>
-          <Switch
+          <Text style={styles.testSirenLabel}>Test siren</Text>
+          <ToggleSwitch
             value={testSirenEnabled}
             onValueChange={handleTestSirenToggle}
-            trackColor={{ false: COLORS.BACKGROUND_GRAY, true: COLORS.SUCCESS }}
-            thumbColor={COLORS.BACKGROUND_WHITE}
           />
         </View>
       )}
@@ -125,9 +168,23 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.MD,
+    gap: SPACING.SM,
+  },
+  mockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.SM,
+    gap: 4,
+  },
+  mockBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.BACKGROUND_WHITE,
   },
   title: {
     fontSize: 22,
@@ -148,6 +205,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+  },
+  disconnectButton: {
+    borderColor: COLORS.ERROR,
   },
   bluetoothContainer: {
     borderRadius: BORDER_RADIUS.MD,
@@ -245,29 +305,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Platform.select({ ios: 'rgba(255, 255, 255, 0.5)', android: '#FFFFFF', default: '#FFFFFF' }),
     borderRadius: BORDER_RADIUS.LG,
-    padding: SPACING.MD,
-    paddingHorizontal: SPACING.XL,
-    marginBottom: SPACING.LG,
-    width: '100%',
-    alignSelf: 'stretch',
+    paddingVertical: 14,
+    paddingHorizontal: SPACING.MD,
+    marginBottom: 12,
+    minHeight: 56,
+    ...Platform.select({
+      ios: {
+        backgroundColor: COLORS.OVERLAY_WHITE,
   },
-  testSirenLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.SM,
-    flex: 1,
+      android: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.08)',
+      },
+      default: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.08)',
+      },
+    }),
   },
-  exclamationCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.ERROR,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  testSirenText: {
+  testSirenLabel: {
     fontSize: 16,
     fontWeight: '500',
     color: COLORS.TEXT_PRIMARY,

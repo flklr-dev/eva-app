@@ -2,3 +2,4 @@ export { SafeHomeNotificationProvider, useSafeHomeNotifications, showGlobalSafeH
 export { GlobalNotificationProvider, useGlobalNotifications, showGlobalFriendRequestNotification, dismissGlobalFriendRequestNotification } from './GlobalNotificationContext';
 export { QuickActionNotificationProvider, useQuickActionNotifications, showGlobalQuickActionNotification, dismissGlobalQuickActionNotification } from './QuickActionNotificationContext';
 export { ActivityProvider, useActivity } from './ActivityContext';
+export { BluetoothProvider, useBluetooth } from './BluetoothContext';

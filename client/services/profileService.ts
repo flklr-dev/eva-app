@@ -219,9 +219,9 @@ export const updateSettings = async (settings: {
 };
 
 /**
- * Delete user account
+ * Delete user account (requires password confirmation)
  */
-export const deleteAccount = async (tokenFromContext?: string | null): Promise<{ message: string; note: string }> => {
+export const deleteAccount = async (password: string, tokenFromContext?: string | null): Promise<{ message: string; note: string }> => {
   const token = await getAuthToken(tokenFromContext);
 
   const response = await fetch(`${getApiBaseUrl()}/api/profile`, {
@@ -230,6 +230,7 @@ export const deleteAccount = async (tokenFromContext?: string | null): Promise<{
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
+    body: JSON.stringify({ password }),
   });
 
   if (!response.ok) {

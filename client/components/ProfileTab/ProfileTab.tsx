@@ -72,6 +72,8 @@ export const ProfileTab: React.FC = () => {
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
   const [selectedProfilePictureUri, setSelectedProfilePictureUri] = useState<string | null>(null);
   const [homeAddressModalVisible, setHomeAddressModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Debug log user data on mount and updates
   useEffect(() => {
@@ -426,9 +428,18 @@ export const ProfileTab: React.FC = () => {
   };
 
 
-  const handlePrivacySettings = () => {
-    console.log('Privacy settings pressed');
-    // TODO: Implement privacy settings functionality
+  const handlePrivacyPolicy = () => {
+    Linking.openURL('https://www.eva-alert.com/policies/privacy-policy').catch((err) => {
+      console.error('Failed to open privacy policy:', err);
+      Alert.alert('Error', 'Failed to open privacy policy. Please try again.');
+    });
+  };
+
+  const handleContactSupport = () => {
+    Linking.openURL('https://www.eva-alert.com/pages/contact').catch((err) => {
+      console.error('Failed to open contact support:', err);
+      Alert.alert('Error', 'Failed to open contact support. Please try again.');
+    });
   };
 
   const handleLogout = () => {
@@ -510,21 +521,32 @@ export const ProfileTab: React.FC = () => {
 
   const handleCloseDeleteModal = () => {
     setDeleteModalVisible(false);
+    setDeletePassword('');
   };
 
   const handleConfirmDelete = async () => {
+    if (!deletePassword.trim()) {
+      Alert.alert('Password Required', 'Please enter your password to confirm account deletion.');
+      return;
+    }
+
     try {
-      await deleteAccount();
+      setIsDeletingAccount(true);
+      await deleteAccount(deletePassword, token);
 
       // Logout user after account deletion
       await logout();
 
-    setDeleteModalVisible(false);
+      setDeleteModalVisible(false);
+      setDeletePassword('');
       Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
     } catch (error) {
       console.error('Failed to delete account:', error);
-      setDeleteModalVisible(false);
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to delete account');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete account';
+      Alert.alert('Error', errorMessage);
+      // Don't close modal on error so user can try again
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -766,16 +788,32 @@ export const ProfileTab: React.FC = () => {
         )}
         
 
-        {/* Privacy and Security Container - Only show in view mode */}
+        {/* Privacy Policy Container - Only show in view mode */}
         {!isEditMode && (
-          <TouchableOpacity style={styles.privacyContainer} onPress={handlePrivacySettings} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.privacyContainer} onPress={handlePrivacyPolicy} activeOpacity={0.7}>
             <View style={styles.privacyLeft}>
               <View style={styles.exclamationIconContainer}>
-                <MaterialCommunityIcons name="exclamation" size={20} color={COLORS.TEXT_PRIMARY} />
+                <MaterialCommunityIcons name="shield-check" size={20} color={COLORS.TEXT_PRIMARY} />
               </View>
               <View style={styles.privacyTextContainer}>
-                <Text style={styles.privacyTitle}>Privacy and Security</Text>
-                <Text style={styles.privacySubtitle}>Data protection</Text>
+                <Text style={styles.privacyTitle}>Privacy Policy</Text>
+                <Text style={styles.privacySubtitle}>View our privacy policy</Text>
+              </View>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
+          </TouchableOpacity>
+        )}
+
+        {/* Contact Support Container - Only show in view mode */}
+        {!isEditMode && (
+          <TouchableOpacity style={styles.privacyContainer} onPress={handleContactSupport} activeOpacity={0.7}>
+            <View style={styles.privacyLeft}>
+              <View style={styles.exclamationIconContainer}>
+                <MaterialCommunityIcons name="help-circle" size={20} color={COLORS.TEXT_PRIMARY} />
+              </View>
+              <View style={styles.privacyTextContainer}>
+                <Text style={styles.privacyTitle}>Contact Support</Text>
+                <Text style={styles.privacySubtitle}>Report a problem or get help</Text>
               </View>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
@@ -832,18 +870,70 @@ export const ProfileTab: React.FC = () => {
               <Text style={styles.modalTitle}>Delete account</Text>
 
               {/* Subtitle */}
-              <Text style={styles.modalSubtitle}>Are you sure you want to delete your account?</Text>
+              <Text style={styles.modalSubtitle}>
+                This action cannot be undone. All of your data will be permanently deleted:
+              </Text>
+
+              {/* Data Deletion List */}
+              <View style={styles.deletionListContainer}>
+                <View style={styles.deletionListItem}>
+                  <Text style={styles.deletionListBullet}>•</Text>
+                  <Text style={styles.deletionListText}>Your account and profile information</Text>
+                </View>
+                <View style={styles.deletionListItem}>
+                  <Text style={styles.deletionListBullet}>•</Text>
+                  <Text style={styles.deletionListText}>All friend relationships</Text>
+                </View>
+                <View style={styles.deletionListItem}>
+                  <Text style={styles.deletionListBullet}>•</Text>
+                  <Text style={styles.deletionListText}>Location history and home address</Text>
+                </View>
+                <View style={styles.deletionListItem}>
+                  <Text style={styles.deletionListBullet}>•</Text>
+                  <Text style={styles.deletionListText}>SOS alerts and emergency records</Text>
+                </View>
+                <View style={styles.deletionListItem}>
+                  <Text style={styles.deletionListBullet}>•</Text>
+                  <Text style={styles.deletionListText}>Activity history</Text>
+                </View>
+                <View style={styles.deletionListItem}>
+                  <Text style={styles.deletionListBullet}>•</Text>
+                  <Text style={styles.deletionListText}>Messages and notifications</Text>
+                </View>
+                <View style={styles.deletionListItem}>
+                  <Text style={styles.deletionListBullet}>•</Text>
+                  <Text style={styles.deletionListText}>Connected devices and settings</Text>
+                </View>
+              </View>
+
+              {/* Password Input */}
+              <View style={styles.passwordInputContainer}>
+                <Text style={styles.passwordInputLabel}>Enter your password to confirm</Text>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={deletePassword}
+                  onChangeText={setDeletePassword}
+                  placeholder="Password"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isDeletingAccount}
+                />
+              </View>
 
               {/* Horizontal Line */}
               <View style={styles.modalSeparator} />
 
               {/* Yes Delete Button */}
               <TouchableOpacity
-                style={styles.modalDeleteButton}
+                style={[styles.modalDeleteButton, isDeletingAccount && styles.modalDeleteButtonDisabled]}
                 onPress={handleConfirmDelete}
                 activeOpacity={0.7}
+                disabled={isDeletingAccount || !deletePassword.trim()}
               >
-                <Text style={styles.modalDeleteButtonText}>Yes delete</Text>
+                <Text style={styles.modalDeleteButtonText}>
+                  {isDeletingAccount ? 'Deleting...' : 'Yes, delete my account'}
+                </Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -1303,7 +1393,54 @@ const styles = StyleSheet.create({
   modalDeleteButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#007AFF', // System blue color
+    color: COLORS.ERROR, // Red color for destructive action
+  },
+  deletionListContainer: {
+    paddingHorizontal: SPACING.MD,
+    paddingTop: SPACING.SM,
+    paddingBottom: SPACING.MD,
+  },
+  deletionListItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.XS,
+  },
+  deletionListBullet: {
+    fontSize: 14,
+    color: COLORS.TEXT_SECONDARY,
+    marginRight: SPACING.SM,
+    marginTop: 2,
+  },
+  deletionListText: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: COLORS.TEXT_SECONDARY,
+    flex: 1,
+    lineHeight: 18,
+  },
+  passwordInputContainer: {
+    paddingHorizontal: SPACING.MD,
+    paddingBottom: SPACING.MD,
+  },
+  passwordInputLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.TEXT_SECONDARY,
+    marginBottom: SPACING.SM,
+  },
+  passwordInput: {
+    fontSize: 16,
+    fontWeight: '400',
+    color: COLORS.TEXT_PRIMARY,
+    backgroundColor: COLORS.BACKGROUND_WHITE,
+    borderRadius: BORDER_RADIUS.SM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER_LIGHT,
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+  },
+  modalDeleteButtonDisabled: {
+    opacity: 0.5,
   },
   modalLogoutButton: {
     paddingVertical: SPACING.MD,

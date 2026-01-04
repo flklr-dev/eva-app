@@ -14,7 +14,63 @@ import { SafeHomeNotification } from './components/SafeHomeNotification';
 import { QuickActionNotificationProvider } from './context/QuickActionNotificationContext';
 import { QuickActionNotification } from './components/QuickActionNotification';
 import { ActivityProvider } from './context/ActivityContext';
-import { BluetoothProvider } from './context/BluetoothContext';
+import { BluetoothProvider, useBluetooth } from './context/BluetoothContext';
+import * as Notifications from 'expo-notifications';
+
+/**
+ * Background SOS Handler
+ * Handles SOS notifications when app is in background or closed
+ * Triggers BLE device siren for received SOS alerts
+ */
+const BackgroundSOSHandler: React.FC = () => {
+  const { isConnected, sendSOSAlarm } = useBluetooth();
+
+  useEffect(() => {
+    console.log('[BackgroundSOSHandler] Setting up background notification handler...');
+
+    // Handle notifications received while app is in background or closed
+    const subscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
+      const data = response.notification.request.content.data;
+      
+      if (data.eventType === 'sos_alert') {
+        console.log('[BackgroundSOSHandler] SOS alert notification received in background/closed state');
+        
+        // The app will automatically navigate to Location tab when notification is tapped
+        // This is handled in HomeScreen.tsx notification tap handler
+        
+        // Small delay to ensure app is ready
+        setTimeout(async () => {
+          if (isConnected) {
+            try {
+              console.log('[BackgroundSOSHandler] Triggering BLE device siren for received SOS');
+              const success = await sendSOSAlarm(true);
+              if (success) {
+                console.log('[BackgroundSOSHandler] BLE device siren activated');
+                // Auto-stop after 30 seconds
+                setTimeout(async () => {
+                  await sendSOSAlarm(false);
+                  console.log('[BackgroundSOSHandler] BLE device siren stopped after 30 seconds');
+                }, 30000);
+              } else {
+                console.warn('[BackgroundSOSHandler] Failed to activate BLE device siren');
+              }
+            } catch (error) {
+              console.error('[BackgroundSOSHandler] Error activating BLE device siren:', error);
+            }
+          } else {
+            console.log('[BackgroundSOSHandler] No BLE device connected, skipping siren activation');
+          }
+        }, 1000); // 1 second delay to ensure app is ready
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isConnected, sendSOSAlarm]);
+
+  return null;
+};
 
 /**
  * Safe Home Tracker Initializer
@@ -251,27 +307,39 @@ const DeepLinkHandler: React.FC = () => {
   return null;
 };
 
+/**
+ * App Content - Components that need context providers
+ */
+const AppContent: React.FC = () => {
+  return (
+    <>
+      <BackgroundSOSHandler />
+      <SafeHomeTrackerInitializer />
+      <DeepLinkHandler />
+      <StatusBar style="dark" />
+      <GlobalFriendRequestNotification />
+      <SafeHomeNotification />
+      <QuickActionNotification />
+      <AppNavigator />
+    </>
+  );
+};
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
+        <BluetoothProvider>
         <ActivityProvider>
         <QuickActionNotificationProvider>
           <SafeHomeNotificationProvider>
             <GlobalNotificationProvider>
-              <BluetoothProvider>
-                <SafeHomeTrackerInitializer />
-                <DeepLinkHandler />
-                <StatusBar style="dark" />
-                <GlobalFriendRequestNotification />
-                <SafeHomeNotification />
-                <QuickActionNotification />
-                <AppNavigator />
-              </BluetoothProvider>
+                  <AppContent />
             </GlobalNotificationProvider>
           </SafeHomeNotificationProvider>
         </QuickActionNotificationProvider>
         </ActivityProvider>
+        </BluetoothProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

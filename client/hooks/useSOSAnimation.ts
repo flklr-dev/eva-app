@@ -50,10 +50,6 @@ export const useSOSAnimation = () => {
   };
 
   const stopPulse = () => {
-    // Don't stop if SOS was already sent
-    if (sosSentRef.current) {
-      return;
-    }
     stopAndReset();
   };
 

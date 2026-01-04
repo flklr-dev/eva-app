@@ -8,4 +8,5 @@ export { RoutePanel } from './RoutePanel';
 export { ContactDetailsPanel } from './ContactDetailsPanel';
 export { ActivityListPanel } from './ActivityListPanel';
 export { DevicePanel } from './DevicePanel';
+export { DeviceScanModal } from './DeviceScanModal';
 

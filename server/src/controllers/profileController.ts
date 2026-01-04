@@ -267,21 +267,43 @@ export const updateSettings = async (req: AuthRequest, res: Response): Promise<v
 };
 
 /**
- * Delete user account (soft delete)
+ * Delete user account (hard delete - full data removal for App Store/Play Store compliance)
+ * Requires password confirmation
  */
 export const deleteAccount = async (req: AuthRequest, res: Response): Promise<void> => {
   console.log('[Server] DELETE /api/profile - deleting account');
   try {
     const userId = req.user?._id.toString()!;
+    const { password } = req.body;
 
-    // Use service layer
+    // Validate password is provided
+    if (!password) {
+      res.status(400).json({ message: 'Password is required to delete your account' });
+      return;
+    }
+
+    // Find user and select password field for verification
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    // Verify password before deletion
+    const isPasswordCorrect = await user.comparePassword(password);
+    if (!isPasswordCorrect) {
+      res.status(401).json({ message: 'Incorrect password. Please try again.' });
+      return;
+    }
+
+    // Use service layer - hard delete all data
     await deleteUserAccount(userId);
 
-    console.log('[Server] Account deleted successfully (soft delete)');
+    console.log('[Server] Account deleted successfully (hard delete - all data removed)');
 
     res.json({
       message: 'Account deleted successfully',
-      note: 'Your account has been deactivated. All personal data has been anonymized.',
+      note: 'Your account and all associated data have been permanently deleted.',
     });
 
   } catch (error: any) {

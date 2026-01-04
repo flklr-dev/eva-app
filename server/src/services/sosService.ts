@@ -79,6 +79,42 @@ export const createSOSAlert = async (
 
   const savedAlert = await sosAlert.save();
 
+  // Reverse geocode coordinates to get readable location name
+  let locationName = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`; // Fallback to coordinates
+  try {
+    const geocodeUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10`;
+    const geocodeResponse = await fetch(geocodeUrl, {
+      headers: {
+        'User-Agent': 'EVA-Alert-App/1.0'
+      }
+    });
+    
+    if (geocodeResponse.ok) {
+      const geocodeData: any = await geocodeResponse.json();
+      const address = geocodeData.address || {};
+      
+      // Build location string: City, State/Region (if available)
+      const city = address.city || address.town || address.village || address.municipality;
+      const state = address.state || address.province || address.region;
+      const street = address.road || address.street;
+      
+      if (street && city && state) {
+        locationName = `${street}, ${city}, ${state}`;
+      } else if (city && state) {
+        locationName = `${city}, ${state}`;
+      } else if (city) {
+        locationName = city;
+      } else if (state) {
+        locationName = state;
+      }
+      
+      console.log('[SOS] Reverse geocoded location:', locationName);
+    }
+  } catch (geocodeError) {
+    console.error('[SOS] Reverse geocoding error:', geocodeError);
+    // Continue with coordinate fallback
+  }
+
   // Send push notifications to all recipients
   const userName = user.name || 'Someone';
   const alertMessage = message || `${userName} needs help!`;
@@ -95,6 +131,7 @@ export const createSOSAlert = async (
         userName: userName,
         latitude: latitude,
         longitude: longitude,
+        locationName: locationName, // Readable location name
         message: message,
       }
     );

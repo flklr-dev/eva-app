@@ -2,6 +2,11 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { register, login, getCurrentUser, forgotPassword, verifyOTP, resetPassword } from '../controllers/authController';
 import { authMiddleware } from '../middleware/authMiddleware';
+import { 
+  otpRequestCombinedLimiter, 
+  otpVerifyCombinedLimiter,
+  generalRateLimiter 
+} from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -74,11 +79,28 @@ const resetPasswordValidation = [
 ];
 
 // Routes
+// Apply general rate limiter to all routes
+router.use(generalRateLimiter);
+
 router.post('/register', registerValidation, register);
 router.post('/login', loginValidation, login);
 router.get('/me', authMiddleware, getCurrentUser);
-router.post('/forgot-password', forgotPasswordValidation, forgotPassword);
-router.post('/verify-otp', verifyOTPValidation, verifyOTP);
+
+// OTP endpoints with combined rate limiting
+router.post(
+  '/forgot-password',
+  ...otpRequestCombinedLimiter, // Apply all OTP request rate limiters
+  forgotPasswordValidation,
+  forgotPassword
+);
+
+router.post(
+  '/verify-otp',
+  ...otpVerifyCombinedLimiter, // Apply OTP verification rate limiters
+  verifyOTPValidation,
+  verifyOTP
+);
+
 router.post('/reset-password', resetPasswordValidation, resetPassword);
 
 export default router;

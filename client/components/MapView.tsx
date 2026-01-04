@@ -96,6 +96,7 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
         name: marker.name,
         status: marker.status || '',
         profilePicture: marker.profilePicture || '',
+        locationName: (marker as any).locationName || '', // Include locationName for SOS alerts
       }))
     );
 
@@ -208,6 +209,41 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
               width: 48px;
               height: 48px;
             }
+            /* SOS Alert marker styles - red pulsing indicator */
+            .sos-marker {
+              width: 50px;
+              height: 50px;
+              border-radius: 50%;
+              overflow: visible;
+              border: 4px solid #EF4444;
+              box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+              background: #EF4444;
+              position: relative;
+              animation: sosPulse 2s infinite;
+            }
+            @keyframes sosPulse {
+              0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+              }
+              50% {
+                box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+              }
+              100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+              }
+            }
+            .sos-marker-inner {
+              width: 100%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 20px;
+              font-weight: 700;
+              color: #ffffff;
+              background: #EF4444;
+              border-radius: 50%;
+            }
           </style>
         </head>
         <body>
@@ -249,12 +285,25 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
             ${userLocationScript}
 
             markers.forEach(marker => {
-              // Create profile picture marker with divIcon
+              let iconHtml = '';
+              let iconSize = [40, 40];
+              let iconAnchor = [20, 20];
+              
+              // Check if this is an SOS alert marker
+              if (marker.status === 'sos_alert') {
+                // Create SOS alert marker with red pulsing indicator
+                const initials = marker.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+                iconHtml = '<div class="sos-marker">' +
+                  '<div class="sos-marker-inner">🚨</div>' +
+                  '</div>';
+                iconSize = [50, 50];
+                iconAnchor = [25, 25];
+              } else {
+                // Create regular profile picture marker with divIcon
               const initials = marker.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
               const profilePicUrl = marker.profilePicture;
               
               // Create custom icon with profile picture or initials
-              let iconHtml = '';
               if (profilePicUrl) {
                 iconHtml = '<div class="profile-marker">' +
                   '<img src="' + profilePicUrl + '" alt="' + marker.name + '" onerror="this.style.display=' + "'none'; this.nextElementSibling.style.display='flex';" + '" />' +
@@ -264,19 +313,31 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
                 iconHtml = '<div class="profile-marker">' +
                   '<div class="profile-fallback" style="display:flex;">' + initials + '</div>' +
                   '</div>';
+                }
               }
               
               const icon = L.divIcon({
                 html: iconHtml,
                 className: 'custom-marker',
-                iconSize: [40, 40],
-                iconAnchor: [20, 20],
-                popupAnchor: [0, -20]
+                iconSize: iconSize,
+                iconAnchor: iconAnchor,
+                popupAnchor: [0, -iconAnchor[1]]
               });
+              
+              // For SOS alerts, include location name if available
+              let popupText = '';
+              if (marker.status === 'sos_alert') {
+                // Try to get locationName from marker data (if passed through)
+                const locationName = marker.locationName || '';
+                const locationText = locationName ? '<br><small>📍 ' + locationName + '</small>' : '';
+                popupText = '<b>🚨 SOS Alert</b><br>' + marker.name + ' needs help!' + locationText;
+              } else {
+                popupText = '<b>' + marker.name + '</b>';
+              }
               
               L.marker([marker.lat, marker.lng], { icon: icon })
                 .addTo(map)
-                .bindPopup('<b>' + marker.name + '</b>');
+                .bindPopup(popupText);
             });
           </script>
         </body>
@@ -340,6 +401,95 @@ export const MapView = React.memo(React.forwardRef<any, MapViewProps>((
       webViewRef.current.injectJavaScript(updateScript);
     }
   }, [userLocation, showsUserLocation, userProfilePicture, userName]);
+
+  // Update markers when they change (including SOS alerts)
+  useEffect(() => {
+    if (webViewRef.current && markers.length >= 0) {
+      const markersJSON = JSON.stringify(
+        markers.map((marker) => ({
+          id: marker.id,
+          lat: marker.coordinate.latitude,
+          lng: marker.coordinate.longitude,
+          name: marker.name,
+          status: marker.status || '',
+          profilePicture: marker.profilePicture || '',
+          locationName: (marker as any).locationName || '', // Include locationName for SOS alerts
+        }))
+      );
+
+      const updateMarkersScript = `
+        (function() {
+          // Remove all existing markers except user marker
+          map.eachLayer(function(layer) {
+            if (layer instanceof L.Marker && 
+                !(layer.options.icon && 
+                  layer.options.icon.options.html && 
+                  layer.options.icon.options.html.includes('border-color: #4285F4'))) {
+              map.removeLayer(layer);
+            }
+          });
+          
+          // Add updated markers
+          const markers = ${markersJSON};
+          
+          markers.forEach(marker => {
+            let iconHtml = '';
+            let iconSize = [40, 40];
+            let iconAnchor = [20, 20];
+            
+            // Check if this is an SOS alert marker
+            if (marker.status === 'sos_alert') {
+              // Create SOS alert marker with red pulsing indicator
+              iconHtml = '<div class="sos-marker">' +
+                '<div class="sos-marker-inner">🚨</div>' +
+                '</div>';
+              iconSize = [50, 50];
+              iconAnchor = [25, 25];
+            } else {
+              // Create regular profile picture marker
+              const initials = marker.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+              const profilePicUrl = marker.profilePicture;
+              
+              if (profilePicUrl) {
+                iconHtml = '<div class="profile-marker">' +
+                  '<img src="' + profilePicUrl + '" alt="' + marker.name + '" onerror="this.style.display=' + "'none'; this.nextElementSibling.style.display='flex';" + '" />' +
+                  '<div class="profile-fallback" style="display:none;">' + initials + '</div>' +
+                  '</div>';
+              } else {
+                iconHtml = '<div class="profile-marker">' +
+                  '<div class="profile-fallback" style="display:flex;">' + initials + '</div>' +
+                  '</div>';
+              }
+            }
+            
+            const icon = L.divIcon({
+              html: iconHtml,
+              className: 'custom-marker',
+              iconSize: iconSize,
+              iconAnchor: iconAnchor,
+              popupAnchor: [0, -iconAnchor[1]]
+            });
+            
+            // For SOS alerts, include location name if available
+            let popupText = '';
+            if (marker.status === 'sos_alert') {
+              const locationName = marker.locationName || '';
+              const locationText = locationName ? '<br><small>📍 ' + locationName + '</small>' : '';
+              popupText = '<b>🚨 SOS Alert</b><br>' + marker.name + ' needs help!' + locationText;
+            } else {
+              popupText = '<b>' + marker.name + '</b>';
+            }
+            
+            L.marker([marker.lat, marker.lng], { icon: icon })
+              .addTo(map)
+              .bindPopup(popupText);
+          });
+        })();
+        true;
+      `;
+      webViewRef.current.injectJavaScript(updateMarkersScript);
+    }
+  }, [markers]);
 
   return (
     <View style={[styles.container, style]}>

@@ -13,6 +13,7 @@ import friendRoutes from './routes/friendRoutes';
 import profileRoutes from './routes/profileRoutes';
 import activityRoutes from './routes/activityRoutes';
 import sosRoutes from './routes/sosRoutes';
+import deviceRoutes from './routes/device';
 
 // Load environment variables
 console.log('[Server] Loading environment variables...');
@@ -124,8 +125,65 @@ const connectDB = async () => {
   }
 };
 
+// Universal Links / App Links Support
+// Apple App Site Association (AASA) file for Universal Links
+// IMPORTANT: Replace 'TEAM_ID' with your Apple Developer Team ID
+// Get it from: https://developer.apple.com/account
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  // Remove cache headers that might prevent iOS from reading this file
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  
+  res.json({
+    applinks: {
+      apps: [],
+      details: [
+        {
+          // TODO: Replace 'TEAM_ID' with your actual Apple Team ID
+          // Format: TEAM_ID.com.eva.alert
+          // Example: ABC123DEF4.com.eva.alert
+          appID: 'TEAM_ID.com.eva.alert',
+          paths: [
+            '/invite/*',
+            '/user/*'
+          ]
+        }
+      ]
+    }
+  });
+});
+
+// Android Asset Links for App Links verification
+// IMPORTANT: Add your app's SHA256 certificate fingerprint
+// Get it from: keytool -list -v -keystore your-keystore.jks
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  
+  res.json([
+    {
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: 'com.eva.alert',
+        sha256_cert_fingerprints: [
+          // TODO: Add your app's SHA256 fingerprint here
+          // For debug builds: keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+          // For production: keytool -list -v -keystore your-production-keystore.jks -alias your-key-alias
+          // Example: 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99'
+        ]
+      }
+    }
+  ]);
+});
+
 // Invite route - serves HTML page for QR code scanning
 // This allows iPhone Camera to recognize the QR code as a valid URL
+// With Universal Links configured, tapping this URL will open the app directly
 app.get('/invite/:userId', async (req, res) => {
   console.log('✓ /invite/:userId route hit - userId:', req.params.userId);
   const { userId } = req.params;
@@ -173,7 +231,7 @@ app.get('/invite/:userId', async (req, res) => {
 
   console.log('✓ Invite page generated for userId:', userId);
 
-  // HTML page with DEEP LINK as PRIMARY, copy code as BACKUP
+  // HTML page with clean, minimal design matching app UI
   const html = `
     <!DOCTYPE html>
     <html>
@@ -182,159 +240,170 @@ app.get('/invite/:userId', async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Add Friend - EVA Alert</title>
         <style>
-          * { box-sizing: border-box; }
+          * { 
+            box-sizing: border-box; 
+            margin: 0;
+            padding: 0;
+          }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Helvetica', 'Segoe UI', Roboto, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             min-height: 100vh;
             margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            padding: 24px;
+            background: #F8FAFC;
+            color: #111827;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
           }
           .container {
-            background: white;
+            background: #FFFFFF;
             border-radius: 20px;
-            padding: 30px;
+            padding: 32px 24px;
             max-width: 400px;
             width: 100%;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             text-align: center;
-            color: #333;
           }
-          h1 {
-            margin: 0 0 10px 0;
-            color: #333;
-            font-size: 24px;
+          .brand {
+            font-size: 48px;
+            font-weight: 700;
+            color: #4B5563;
+            letter-spacing: 2px;
+            margin-bottom: 24px;
+            font-family: 'Helvetica', sans-serif;
           }
-          .user-info {
-            background: #f3f4f6;
+          .title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 8px;
+          }
+          .subtitle {
+            font-size: 14px;
+            color: #6B7280;
+            margin-bottom: 24px;
+            line-height: 1.5;
+          }
+          .user-card {
+            background: #F3F4F6;
             border-radius: 12px;
             padding: 16px;
-            margin: 15px 0;
-            border-left: 4px solid #667eea;
+            margin-bottom: 24px;
+            border: 1px solid #E5E7EB;
           }
           .user-name {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
-            color: #333;
+            color: #111827;
             margin: 0;
           }
-          p {
-            color: #666;
-            margin: 10px 0;
-            line-height: 1.6;
-          }
           .button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: #F1F8E9;
+            color: #111827;
             border: none;
-            padding: 15px 30px;
-            border-radius: 10px;
+            padding: 16px 24px;
+            border-radius: 28px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 12px;
+            margin-bottom: 16px;
             width: 100%;
-            transition: transform 0.2s, opacity 0.2s;
+            transition: opacity 0.2s, transform 0.1s;
             text-decoration: none;
             display: block;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
           }
           .button:hover {
-            transform: scale(1.02);
+            opacity: 0.9;
           }
           .button:active {
             transform: scale(0.98);
-            opacity: 0.9;
+            opacity: 0.85;
           }
           .button-secondary {
-            background: #f3f4f6;
-            color: #333;
-            margin-top: 10px;
+            background: #FFFFFF;
+            color: #111827;
+            border: 1px solid #E5E7EB;
+            margin-top: 12px;
           }
           .button-secondary:hover {
-            background: #e5e7eb;
+            background: #F9FAFB;
+          }
+          .divider {
+            display: flex;
+            align-items: center;
+            margin: 24px 0;
+            color: #9CA3AF;
+            font-size: 12px;
+          }
+          .divider::before,
+          .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #E5E7EB;
+          }
+          .divider::before {
+            margin-right: 12px;
+          }
+          .divider::after {
+            margin-left: 12px;
+          }
+          .code-section {
+            margin-top: 8px;
+          }
+          .code-label {
+            font-size: 12px;
+            color: #9CA3AF;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
           }
           .code-container {
-            background: #f6f7fb;
-            border: 2px dashed #667eea;
+            background: #F9FAFB;
+            border: 1.5px solid #E5E7EB;
             border-radius: 12px;
             padding: 16px;
-            margin: 20px 0 10px 0;
+            margin-bottom: 12px;
             cursor: pointer;
             transition: all 0.2s;
           }
           .code-container:hover {
-            background: #eef0f5;
-            border-style: solid;
+            background: #F3F4F6;
+            border-color: #D1D5DB;
           }
           .code-container:active {
             transform: scale(0.98);
-          }
-          .code-label {
-            font-size: 12px;
-            color: #6b7280;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
           }
           .code {
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             font-size: 14px;
             font-weight: 600;
-            color: #333;
+            color: #111827;
             word-break: break-all;
+            letter-spacing: 0.5px;
           }
           .status {
             margin-top: 12px;
             padding: 12px;
-            border-radius: 8px;
+            border-radius: 12px;
             font-size: 14px;
             font-weight: 500;
+            line-height: 1.4;
           }
           .status.success {
-            background: #ecfdf5;
+            background: #ECFDF5;
             color: #059669;
+            border: 1px solid #D1FAE5;
           }
           .status.info {
-            background: #eff6ff;
-            color: #1d4ed8;
-          }
-          .instructions {
-            background: #fafafa;
-            border-radius: 12px;
-            padding: 16px;
-            margin-top: 20px;
-            text-align: left;
-          }
-          .step {
-            display: flex;
-            align-items: flex-start;
-            margin-bottom: 12px;
-          }
-          .step:last-child {
-            margin-bottom: 0;
-          }
-          .step-number {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 24px;
-            height: 24px;
-            background: #667eea;
-            color: white;
-            border-radius: 50%;
-            font-size: 12px;
-            font-weight: 600;
-            margin-right: 12px;
-          }
-          .step-text {
-            font-size: 14px;
-            color: #374151;
-            line-height: 1.5;
+            background: #EFF6FF;
+            color: #1D4ED8;
+            border: 1px solid #DBEAFE;
           }
           .hidden {
             display: none;
@@ -343,43 +412,37 @@ app.get('/invite/:userId', async (req, res) => {
       </head>
       <body>
         <div class="container">
-          <h1>👥 Add Friend</h1>
+          <div class="brand">EVA</div>
           
-          <div class="user-info">
+          <h1 class="title">Add Friend</h1>
+          <p class="subtitle">Open EVA Alert to send a friend request</p>
+          
+          <div class="user-card">
             <p class="user-name">${userName}</p>
           </div>
           
-          <p>Open EVA Alert to send a friend request</p>
-          
-          <!-- PRIMARY: Open App Button -->
           <a href="${customSchemeLink}" class="button" id="openAppBtn">
-            📱 Open EVA Alert
+            Open EVA Alert
           </a>
           
-          <div class="instructions">
-            <div class="step">
-              <span class="step-number">1</span>
-              <span class="step-text">Tap <strong>"Open EVA Alert"</strong> above</span>
-            </div>
-            <div class="step">
-              <span class="step-number">2</span>
-              <span class="step-text">The friend request will be sent automatically</span>
-            </div>
-          </div>
+          <p style="margin-top: 16px; font-size: 12px; color: #9CA3AF; line-height: 1.4;">
+            Tap the button above to automatically open the EVA Alert app and send a friend request.
+          </p>
           
-          <p style="margin-top: 20px; font-size: 13px; color: #9ca3af;">If the app doesn't open:</p>
+          <div class="divider">OR</div>
           
-          <!-- BACKUP: Copy Code Section -->
+          <div class="code-section">
+            <div class="code-label">Invitation Code</div>
           <div class="code-container" id="codeBox">
-            <div class="code-label">Invitation Code (tap to copy)</div>
             <div class="code" id="inviteCode">${inviteCode}</div>
           </div>
           
           <div id="status" class="status success hidden"></div>
           
           <button class="button button-secondary" id="copyBtn">
-            📋 Copy Code
+              Copy Code
           </button>
+          </div>
         </div>
         
         <script>
@@ -435,19 +498,21 @@ app.get('/invite/:userId', async (req, res) => {
           }
           
           function showCopied() {
-            codeBox.style.borderColor = '#059669';
-            codeBox.style.background = '#ecfdf5';
-            copyBtn.textContent = '✅ Copied!';
-            copyBtn.style.background = '#059669';
-            copyBtn.style.color = 'white';
+            codeBox.style.borderColor = '#34C759';
+            codeBox.style.background = '#ECFDF5';
+            copyBtn.textContent = 'Copied!';
+            copyBtn.style.background = '#34C759';
+            copyBtn.style.color = '#FFFFFF';
             statusEl.className = 'status success';
-            statusEl.textContent = 'Code copied! Now open EVA Alert app.';
+            statusEl.textContent = 'Code copied! Open EVA Alert and paste the code.';
             statusEl.classList.remove('hidden');
             
             setTimeout(function() {
-              copyBtn.textContent = '📋 Copy Again';
-              copyBtn.style.background = '';
-              copyBtn.style.color = '';
+              copyBtn.textContent = 'Copy Code';
+              copyBtn.style.background = '#FFFFFF';
+              copyBtn.style.color = '#111827';
+              codeBox.style.borderColor = '#E5E7EB';
+              codeBox.style.background = '#F9FAFB';
             }, 3000);
           }
           
@@ -494,6 +559,10 @@ console.log('✓ Activity routes registered at /api/activities');
 // SOS Routes
 app.use('/api/sos', sosRoutes);
 console.log('✓ SOS routes registered at /api/sos');
+
+// Device Routes
+app.use('/api/devices', deviceRoutes);
+console.log('✓ Device routes registered at /api/devices');
 
 // Admin Auth Routes
 app.use('/api/admin/auth', adminAuthRoutes);
